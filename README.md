@@ -51,12 +51,18 @@ Documented adaptations for perennials (`scoring.js`):
 - **Annual regime gate**: a tree lives through the whole year, so the annual mean
   temperature must sit inside the species' absolute envelope. Without this, arid
   tropical species "qualify" on a four-month slice of a temperate summer.
-- **Frost kill** is tested year-round against KTMPR (killing temperature during
-  dormancy, KTMP as fallback) two ways: the standard dismo test (monthly mean minimum
-  within 4 C of the threshold) and the observed 10-year record low undercutting the
-  threshold outright. Tropical-class species with no cold data at all default to
-  frost-tender at 0 C; temperate species with no cold data show frost as "no data"
-  rather than silently passing.
+- **Dual-stage frost semantics**: decouples dormant winter hardiness from active
+  growing-season shoot sensitivity:
+  - *Dormant winter hardiness (KTMPR)*: tested against winter monthly minima
+    (within 4 C) and the observed 10-year record low undercutting KTMPR, with a
+    4 C radiative frost margin caveat zone.
+  - *Active-growth shoot sensitivity (KTMP)*: tested against minimum temperatures
+    within the active growing window, demoting scores by half where late spring or
+    early autumn freezes threaten tender vegetative shoots and flowers.
+  - *Annual crop escape*: annuals (G < 12) evaluate frost strictly within their
+    own summer growing window and escape winter freezes.
+  - Tropical-class species with no cold data default to frost-tender at 0 C;
+    temperate species with no cold data show frost as "no data" rather than silently passing.
 - **Obligate wetland gate**: species whose EcoCrop absolute drainage tolerates
   only saturated soil (duckweed, cattail, mangroves; 55 species) are killed on
   DEM slopes >= 4 degrees, with the reason on the card, and wear a "wetland"

@@ -222,11 +222,15 @@ export function scoreSpecies(sp, site, ev = null) {
   let temp = 0, rain = 0, best = 0, bestScore = -1;
   if (dormantTree) { // annual rain, warm-season temperature, decoupled
     rain = trap(site.prec.reduce((a, b) => a + b, 0), ...sp.rain);
+    let bestMean = -Infinity;
     for (let s = 0; s < 12; s++) {
       let tsum = 0;
       for (let k = 0; k < Gt; k++) tsum += site.tavg[(s + k) % 12];
-      const t = trap(tsum / Gt, ...sp.temp);
-      if (t > bestScore) { bestScore = t; temp = t; best = s; }
+      const mean = tsum / Gt;
+      const t = trap(mean, ...sp.temp);
+      if (t > bestScore || (t === bestScore && mean > bestMean)) {
+        bestScore = t; temp = t; bestMean = mean; best = s;
+      }
     }
   } else {
     for (let s = 0; s < 12; s++) {
@@ -266,31 +270,55 @@ export function scoreSpecies(sp, site, ev = null) {
   // native right here beats the envelope: the regime is survivable by observation
   if (!annual && ev?.native) annual = 1;
 
-  // Frost: dormant-season hardiness (KTMPR), else early-growth KTMP; species
-  // with no cold data at all default to frost-tender when tropical and to
-  // "unknown" (null, not scored) when temperate. Kill on the dismo monthly
-  // test OR when the observed 10-year record low undercuts the threshold.
-  const kt = sp.ktmpr ?? sp.ktmp ?? (sp.gclass?.startsWith("tropical") ? 0 : null);
-  // Reanalysis minima run warm against radiative valley/highland frost: an
-  // ERA5 grid cell can report a +1 C record low where growers see real
-  // frosts (caught by an agronomist in highland Bolivia, 2026-08). When the
-  // observed record low sits within FROST_MARGIN of the kill threshold, the
-  // species is not killed but takes a half penalty and wears a caveat.
+  // ---------------------------------------------------------------------------
+  // Dual-Stage Frost Semantics (Decoupled KTMPR vs KTMP)
+  // EcoCrop defines two distinct killing temperature fields:
+  //   - KTMPR: Dormant-season extreme winter hardiness (woody tissues / roots)
+  //   - KTMP:  Active growing-season sensitivity (tender shoots / leaves / flowers)
+  // ---------------------------------------------------------------------------
   const FROST_MARGIN = 4;
   let frost;
-  if (kt == null) frost = null;
-  else if (sp.annual && G < 12) {
+
+  if (sp.annual && G < 12) {
     // An annual crop lives inside its growing window and never meets the
     // winter: frost is the dismo per-window test on the window's own months.
-    // Year-round record lows were zeroing beans, lettuce and maize in every
-    // cold-winter climate they are grown in (caught via Turkish user feedback).
-    let wmin = Infinity;
-    for (let k = 0; k < G; k++) wmin = Math.min(wmin, site.tmin[(best + k) % 12]);
-    frost = wmin < kt + 4 ? 0 : 1;
+    const kt = sp.ktmp ?? sp.ktmpr ?? (sp.gclass?.startsWith("tropical") ? 0 : null);
+    if (kt == null) {
+      frost = null;
+    } else {
+      let wmin = Infinity;
+      for (let k = 0; k < G; k++) wmin = Math.min(wmin, site.tmin[(best + k) % 12]);
+      frost = wmin < kt + 4 ? 0 : 1;
+    }
   } else {
-    frost = (Math.min(...site.tmin) < kt + 4 || (site.absMin != null && site.absMin < kt) ? 0 :
-      (site.absMin != null && site.absMin - FROST_MARGIN <= kt ? 0.5 : 1));
+    // Stage 1: Dormant winter extreme tolerance (KTMPR)
+    const ktr = sp.ktmpr ?? (sp.gclass?.startsWith("tropical") ? 0 : null);
+    if (ktr != null) {
+      const minMonthly = Math.min(...site.tmin);
+      if (minMonthly < ktr + 4 || (site.absMin != null && site.absMin < ktr)) {
+        // Winter is chronically below hardiness OR record low cuts under kill threshold:
+        frost = 0;
+      } else if (site.absMin != null && site.absMin - FROST_MARGIN <= ktr) {
+        // Record low sits within FROST_MARGIN of hardiness: radiative frost caveat penalty
+        frost = 0.5;
+      } else {
+        frost = 1;
+      }
+    } else {
+      frost = null;
+    }
+
+    // Stage 2: Active growing-season frost risk for succulent new growth (KTMP)
+    if (frost !== 0 && sp.ktmp != null) {
+      let wmin = Infinity;
+      for (let k = 0; k < Gt; k++) wmin = Math.min(wmin, site.tmin[(best + k) % 12]);
+      if (wmin < sp.ktmp) {
+        // Late spring or early autumn frost threatens active vegetative shoots
+        frost = Math.min(frost ?? 1, 0.5);
+      }
+    }
   }
+
   // EcoCrop hardiness fields are unreliable for wild cold-climate trees
   // (sugar maple carries KTMPR -18 and would die in Toronto): when the
   // species is native to this exact site, a frost kill demotes to a half

@@ -342,6 +342,23 @@ assert.ok(scoreSpecies(hazel, { ...ordu, terrain: { slope: 35 } }, { countryNati
   "Ordu hazelnut survives the depth gate on the 30-45 deg slopes it is farmed on");
 assert.ok(scoreSpecies(by("Larix decidua"), { ...berlin, terrain: { slope: 30 } }).factors.depth !== 0,
   "larch is not depth-killed on a 30 deg alpine slope");
+// --- dual-stage frost semantics (KTMPR winter hardiness vs KTMP growing-season sensitivity)
+const apple = by("Malus domestica");
+assert.ok(apple?.ktmpr === -30 && apple?.ktmp === -2, "apple carries KTMPR -30 and KTMP -2");
+const coldWinterMildSummer = {
+  lat: 50,
+  tavg: [-5, -3, 2, 8, 14, 18, 20, 19, 14, 8, 2, -3],
+  tmin: [-8, -6, -1, 4, 8, 12, 14, 13, 9, 4, -1, -6],
+  prec: [50, 45, 40, 50, 60, 70, 80, 70, 60, 50, 50, 50],
+  absMin: -20, ph: 6.5
+};
+assert.equal(scoreSpecies(apple, coldWinterMildSummer).factors.frost, 1.0, "apple passes dormant winter -20 C (KTMPR -30)");
+const lateSpringFreeze = {
+  ...coldWinterMildSummer,
+  tmin: [-8, -6, -3, -3, 8, 12, 14, 13, 9, 4, -1, -6] // early growing window has -3 C < -2 C KTMP
+};
+assert.equal(scoreSpecies(apple, lateSpringFreeze).factors.frost, 0.5, "apple demoted to 0.5 on late spring frost (KTMP -2)");
+
 // flagship crops in their home regions (Turkish issue #5, 2026-08): the wet
 // side of an EcoCrop rain envelope proxies disease/drainage, not survival,
 // and Kew-recorded naturalization is establishment evidence for non-natives
