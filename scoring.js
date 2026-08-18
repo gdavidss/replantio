@@ -195,7 +195,34 @@ function dayClasses(d) {
   return c;
 }
 
-// site: {tavg[12], tmin[12], prec[12], ph|null, lat}
+// ---------------------------------------------------------------------------
+// Perennial Hydrology & Slope Drainage (FAO Soils Bulletin 52 / Darcy Flux)
+// Flat land (<2 deg) accumulates standing water when rain > ROPMX.
+// Sloped terrain (>2 deg) accelerates lateral surface/subsurface gravity drainage,
+// expanding the upper precipitation tolerance band (RMAX - ROPMX).
+// ---------------------------------------------------------------------------
+export const SLOPE_FLAT_DEG = 2.0;         // Threshold below which drainage is flat/unrelieved
+export const SLOPE_MAX_DEG = 16.0;         // Gravitational drainage benefit plateau (~28% gradient)
+export const MAX_SLOPE_DRAIN_FACTOR = 1.0; // Expands upper tolerance band (RMAX - ROPMX) by up to +100%
+
+/**
+ * Calculates rain score for perennials on sloped terrain.
+ * On flat ground, excess precipitation above ROPMX saturates soil toward RMAX.
+ * On hillsides, lateral gravity drainage expands the (RMAX - ROPMX) tolerance band proportionally.
+ */
+export function scorePerennialRain(annualRain, [rmin, ropmn, ropmx, rmax], slope) {
+  if (annualRain <= ropmx) {
+    return trap(annualRain, rmin, ropmn, ropmx, rmax);
+  }
+  const deg = slope ?? 0;
+  const slopeProgress = deg > SLOPE_FLAT_DEG
+    ? Math.min(1.0, (deg - SLOPE_FLAT_DEG) / (SLOPE_MAX_DEG - SLOPE_FLAT_DEG))
+    : 0;
+  const effectiveRmax = ropmx + (rmax - ropmx) * (1 + slopeProgress * MAX_SLOPE_DRAIN_FACTOR);
+  return trap(annualRain, rmin, ropmn, ropmx, effectiveRmax);
+}
+
+// site: {tavg[12], tmin[12], prec[12], ph|null, lat, terrain}
 // ev (optional): { native: true } = the species' own mapped/regional native
 // range covers this exact site, which is evidence the regime is survivable
 // even where EcoCrop's crop-oriented fields say otherwise.
@@ -203,15 +230,14 @@ export function scoreSpecies(sp, site, ev = null) {
   const [gmin, gmax] = sp.cycle ?? [null, null];
   const G = gmin == null && gmax == null ? 12 :
     Math.max(1, Math.min(12, Math.round(((gmin ?? gmax) + (gmax ?? gmin)) / 60)));
-  // A TREE declaring deep dormant hardiness (KTMPR <= -10) does not grow
-  // through its winter: its TEMPERATURE is scored on the growing season
-  // (months averaging >= 5 C, capped by its own cycle), otherwise a
-  // 12-month mean blends saskatoon's Winnipeg summers with -20 C januaries
-  // and kills it in the town it was named after. Its RAIN is the full year
-  // (temperate trees live on stored/annual water, and sugar maple's 6-month
-  // envelope would starve in Toronto on window rain alone). Herbaceous
-  // hardy crops keep the classic cycle-window scoring.
-  const dormantTree = sp.tree && (sp.ktmpr ?? 99) <= -10;
+  // A perennial lives on stored/annual water. A dormant/deciduous tree (KTMPR <= -10)
+  // does not grow through its winter: its TEMPERATURE is scored on the growing season
+  // (months averaging >= 5 C, capped by its cycle), otherwise a 12-month mean blends
+  // saskatoon's Winnipeg summers with -20 C januaries and kills it in the town it was
+  // named after. Its RAIN is the full year modulated by hillslope gravity drainage.
+  // Herbaceous annual crops keep the classic cycle-window scoring.
+  const isPerennial = !sp.annual;
+  const dormantTree = isPerennial && (sp.tree && (sp.ktmpr ?? 99) <= -10);
   let Gt = G;
   if (dormantTree) {
     const warm = site.tavg.filter(t => t >= 5).length;
@@ -220,8 +246,9 @@ export function scoreSpecies(sp, site, ev = null) {
   }
 
   let temp = 0, rain = 0, best = 0, bestScore = -1;
-  if (dormantTree) { // annual rain, warm-season temperature, decoupled
-    rain = trap(site.prec.reduce((a, b) => a + b, 0), ...sp.rain);
+  if (isPerennial) { // annual rain with slope drainage, warm-season temperature
+    const annualRain = site.prec.reduce((a, b) => a + b, 0);
+    rain = scorePerennialRain(annualRain, sp.rain, site.terrain?.slope);
     for (let s = 0; s < 12; s++) {
       let tsum = 0;
       for (let k = 0; k < Gt; k++) tsum += site.tavg[(s + k) % 12];
@@ -255,7 +282,7 @@ export function scoreSpecies(sp, site, ev = null) {
   const WET_MARGIN = 1.15;
   if (rain === 0) {
     let rtot = 0;
-    if (dormantTree || G === 12) rtot = site.prec.reduce((a, b) => a + b, 0);
+    if (isPerennial || G === 12) rtot = site.prec.reduce((a, b) => a + b, 0);
     else for (let k = 0; k < G; k++) rtot += site.prec[(best + k) % 12];
     if (rtot > sp.rain[3] && rtot <= sp.rain[3] * WET_MARGIN) rain = 0.5;
   }
@@ -354,9 +381,14 @@ export function scoreSpecies(sp, site, ev = null) {
   // also measure how close the site sits to each envelope's center
   // (triangular membership peaking at the optimal-range midpoint).
   const tri = (x, a, b, c, d) => trap(x, a, (b + c) / 2, (b + c) / 2, d);
-  let tsum = 0, rtot = 0;
-  for (let k = 0; k < G; k++) { const m = (best + k) % 12; tsum += site.tavg[m]; rtot += site.prec[m]; }
-  const fits = [tri(tsum / G, ...sp.temp), tri(rtot, ...sp.rain)];
+  let tsum = 0;
+  for (let k = 0; k < Gt; k++) tsum += site.tavg[(best + k) % 12];
+  const rainVal = isPerennial ? site.prec.reduce((a, b) => a + b, 0) : (() => {
+    let r = 0;
+    for (let k = 0; k < G; k++) r += site.prec[(best + k) % 12];
+    return r;
+  })();
+  const fits = [tri(tsum / Gt, ...sp.temp), tri(rainVal, ...sp.rain)];
   if (sp.ph && site.ph != null) fits.push(tri(site.ph, ...sp.ph));
   const fit = fits.reduce((a, b) => a + b, 0) / fits.length;
 

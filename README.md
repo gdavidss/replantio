@@ -77,6 +77,13 @@ Documented adaptations for perennials (`scoring.js`):
   >= 5 C, capped by its cycle) and on the full year for rainfall. Without
   this, a 12-month mean kills saskatoon in Winnipeg and window-rain starves
   sugar maple in Toronto.
+- **Perennial rain & hillslope gravity drainage**: perennials live on annual stored
+  moisture replenished year-round. On flat land (< 2 degrees), excess precipitation
+  above optimal accumulates as standing water and risks root hypoxia. On sloping
+  terrain (> 2 degrees), rapid lateral surface and subsurface gravitational runoff
+  (Darcy flux; FAO Soils Bulletin 52) drains excess water, expanding the upper
+  tolerance band (RMAX - ROPMX) proportionally by up to +100% on steep slopes
+  (>= 16 degrees).
 - **Native evidence beats crop fields**: where a species' own mapped range
   (Little/USGS polygons) or regional WCVP range covers the analysed point,
   the annual-regime gate is waived and a frost kill demotes to a half

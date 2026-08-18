@@ -1,7 +1,7 @@
 // Self-check for the scoring and growth engines. Run: node test/check.mjs
 import assert from "node:assert";
 import { readFileSync } from "node:fs";
-import { trap, daylength, slopeSolarFactor, monthlySlopeSolarFactors, monthlyFlatInsolation, maxSoilDepthCm, scoreSpecies, aggregateClimate, grade, aridityClass } from "../scoring.js";
+import { trap, daylength, slopeSolarFactor, monthlySlopeSolarFactors, monthlyFlatInsolation, maxSoilDepthCm, scorePerennialRain, SLOPE_FLAT_DEG, SLOPE_MAX_DEG, MAX_SLOPE_DRAIN_FACTOR, scoreSpecies, aggregateClimate, grade, aridityClass } from "../scoring.js";
 import { CLASSES, height, dbhCm, co2eKgPerTree, crownDiameterM, crownDisplayM, standDisplay, maturityYears } from "../growth.js";
 
 const species = JSON.parse(readFileSync(new URL("../data/species.json", import.meta.url)));
@@ -342,6 +342,17 @@ assert.ok(scoreSpecies(hazel, { ...ordu, terrain: { slope: 35 } }, { countryNati
   "Ordu hazelnut survives the depth gate on the 30-45 deg slopes it is farmed on");
 assert.ok(scoreSpecies(by("Larix decidua"), { ...berlin, terrain: { slope: 30 } }).factors.depth !== 0,
   "larch is not depth-killed on a 30 deg alpine slope");
+// --- perennial hydrology & hillslope gravity drainage (Darcy lateral flux)
+const testEnv = [500, 800, 1400, 1800]; // rmin, ropmn, ropmx, rmax
+assert.equal(scorePerennialRain(1000, testEnv, 0), 1.0, "optimal rain is 1.0 regardless of slope");
+assert.equal(scorePerennialRain(1600, testEnv, 0), 0.5, "flat ground saturates towards rmax (1800)");
+assert.equal(scorePerennialRain(1800, testEnv, 0), 0.0, "flat ground hits rmax at 1800");
+// On 9 deg slope (halfway between 2 and 16 deg): effectiveRmax becomes 1400 + 400 * 1.5 = 2000
+close(scorePerennialRain(1800, testEnv, 9), 0.333, 0.05, "9 deg slope drains excess rain (effective rmax = 2000)");
+// On >=16 deg slope (full drainage benefit): effectiveRmax becomes 1400 + 400 * 2.0 = 2200
+assert.equal(scorePerennialRain(1800, testEnv, 16), 0.5, "16 deg slope expands upper band by 100% (effective rmax = 2200)");
+assert.equal(scorePerennialRain(2200, testEnv, 25), 0.0, "steep slope hits expanded rmax at 2200");
+
 // flagship crops in their home regions (Turkish issue #5, 2026-08): the wet
 // side of an EcoCrop rain envelope proxies disease/drainage, not survival,
 // and Kew-recorded naturalization is establishment evidence for non-natives
