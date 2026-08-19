@@ -17,7 +17,7 @@ export const CLASSES = {
 const JENKINS = { // AGB_kg = exp(b0 + b1*ln(DBH_cm))
   conifer: [-2.5356, 2.4349],        // pine group
   broadleaf_slow: [-2.0127, 2.4342], // hard maple/oak/hickory/beech
-  broadleaf_fast: [-2.2094, 2.3867], // aspen/alder/poplar/willow
+  broadleaf_fast: [-2.2094, 2.3867], // aspen/alder/poplar/willowasdasdasd
   broadleaf_medium: [-2.48, 2.4835], // mixed hardwood
 };
 
