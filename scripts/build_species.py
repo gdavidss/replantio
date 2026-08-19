@@ -33,6 +33,88 @@ SLOW = {"Quercus", "Fagus", "Swietenia", "Dipteryx", "Hymenaea", "Dalbergia",
 CONIFER_FAM = {"Pinaceae", "Cupressaceae", "Taxaceae", "Podocarpaceae",
                "Araucariaceae", "Taxodiaceae", "Cephalotaxaceae"}
 
+# Curated metadata patches for major crops with incomplete EcoCrop dump fields.
+# EcoCrop raw dump has complete envelopes for these flagship crops but empty LIFO fields.
+SPECIES_PATCH = {
+    2175: { # Zea mays (Maize / Corn)
+        "lifo": "grass", "porte": "grass", "tree": False, "annual": True,
+        "uses": ["environmental", "food", "forage", "materials"],
+        "photo": ["short", "neutral"],
+        "text_opt": ["light", "medium"],
+        "text_tol": ["heavy", "light", "medium"],
+    },
+    1265: { # Ipomoea batatas (Sweet Potato)
+        "lifo": "herb, vine", "porte": "vine", "tree": False, "annual": True,
+        "uses": ["food"], "photo": ["short"],
+        "text_opt": ["light", "medium"],
+        "text_tol": ["heavy", "light", "medium"],
+    },
+    1884: { # Saccharum officinarum (Sugarcane)
+        "lifo": "grass", "porte": "grass", "tree": False, "annual": False,
+        "uses": ["food", "materials"], "photo": ["short", "neutral"],
+        "text_opt": ["medium", "heavy"],
+        "text_tol": ["heavy", "light", "medium"],
+    },
+    1781: { # Pongamia pinnata (Indian beech / Millettia pinnata)
+        "lifo": "tree", "porte": "tree", "tree": True, "wood": "broadleaf",
+        "uses": ["environmental", "materials", "timber"],
+    },
+    8653: { # Pinus roxburghii (Chir pine)
+        "lifo": "tree", "porte": "tree", "tree": True, "wood": "conifer",
+        "uses": ["materials", "timber"],
+    },
+    2246: { # Corylus avellana (European / Pontic hazelnut)
+        # Karadeniz/Pontic hazelnut thrives on natural volcanic acid soils (pH 4.8-5.5) and dormant winter cold (-15 C)
+        "ph": [4.5, 5.5, 7.0, 8.0],
+        "ktmpr": -15,
+    },
+    599: { # Camellia sinensis (Tea - var. sinensis)
+        # Small-leaved tea variety grown in Rize/Georgia/East Asia tolerates dormant frost (-10 C under snow) and acidic soils
+        "ktmpr": -10,
+        "ph": [4.0, 4.5, 6.0, 6.8],
+    },
+    6633: { # Hedysarum pallidum
+        "lifo": "herb", "porte": "herb", "tree": False, "annual": False,
+        "uses": ["forage"],
+    },
+    1553: { # Olea europaea (Olive)
+        "sal_tol": "medium",
+    },
+    2397: { # Prunus amygdalus (Almond)
+        # Rosaceae temperate deciduous nut tree: dormant winter hardiness -26 C, requires winter chilling
+        "ktmpr": -26,
+        "gclass": "temperate_medium",
+        "decid": True,
+    },
+    5624: { # Elaeagnus angustifolia (Russian olive)
+        # Central Asian / Anatolian steppe nitrogen-fixing tree: survives deep continental frost (-30 C)
+        "ktmpr": -30,
+        "gclass": "temperate_medium",
+        "decid": True,
+    },
+    7651: { # Medicago intertexta (Calvary clover)
+        "lifo": "herb", "porte": "herb", "tree": False, "annual": True,
+        "uses": ["forage"],
+    },
+}
+
+GENUS_FAMILY_FALLBACK = {
+    "Acacia": "Fabaceae", "Setaria": "Poaceae", "Axonopus": "Poaceae",
+    "Desmodium": "Fabaceae", "Samanea": "Fabaceae", "Coleus": "Lamiaceae",
+    "Bixa": "Bixaceae", "Anthocephalus": "Rubiaceae", "Feijoa": "Myrtaceae",
+    "Nasturtium": "Brassicaceae", "Centrosema": "Fabaceae", "Stylosanthes": "Fabaceae",
+    "Paspalum": "Poaceae", "Digitaria": "Poaceae", "Brachiaria": "Poaceae",
+    "Urochloa": "Poaceae", "Crotalaria": "Fabaceae", "Indigofera": "Fabaceae",
+    "Aeschynomene": "Fabaceae", "Tephrosia": "Fabaceae", "Solanum": "Solanaceae",
+    "Capsicum": "Solanaceae", "Phaseolus": "Fabaceae", "Vigna": "Fabaceae",
+    "Eucalyptus": "Myrtaceae", "Pinus": "Pinaceae", "Quercus": "Fagaceae",
+    "Citrus": "Rutaceae", "Prunus": "Rosaceae", "Malus": "Rosaceae",
+    "Pyrus": "Rosaceae", "Ficus": "Moraceae", "Morus": "Moraceae",
+    "Acanthosicyos": "Cucurbitaceae", "Abelmoschus": "Malvaceae",
+    "Hibiscus": "Malvaceae", "Olea": "Oleaceae", "Camellia": "Theaceae",
+    "Corylus": "Betulaceae", "Zea": "Poaceae", "Ipomoea": "Convolvulaceae",
+}
+
 # Accepted binomial renames and orthographic standardizations from Kew WCVP
 TAXONOMIC_RENAMES = {
     2662: "Acacia mellifera",
@@ -73,8 +155,6 @@ EXCLUDED_DUPLICATE_IDS = {
     352, 505, 1110, 2071, 2090, 2334, 3578, 4055, 4185, 4564, 4768, 5101,
     5265, 5727, 5861, 5893, 6075, 6252, 7239, 7542, 7682, 8110, 8355, 8638,
     8654, 8657, 8955, 9287, 9645, 9868, 10816, 10955, 11291, 17655, 74984,
-    1068,  # Feijoa sellowiana = Acca sellowiana (2741), WCVP 84305
-    1781,  # Pongamia pinnata = Millettia pinnata = Derris indica (5250)
 }
 
 def num(v):
@@ -117,39 +197,6 @@ def uses(cat):
     }
     return sorted({keep[t] for t in tags if t in keep})
 
-def infer_habit(r, sci, famname, cat_raw, phys_raw, lispa_raw):
-    """Infer life form and habit from taxonomy and morphology when EcoCrop LIFO is missing."""
-    fam = (famname or "").split(":")[-1]
-    phys = (phys_raw or "").lower()
-    cat = (cat_raw or "").lower()
-    com = (r.get("COMNAME") or "").lower()
-
-    if fam in CONIFER_FAM or sci.startswith("Pinus") or re.search(r"\bpines?\b", com):
-        return "tree", "tree", True, "conifer"
-    if "gramineae" in fam.lower() or "poaceae" in fam.lower() or "cereals" in cat:
-        return "grass", "grass", False, "broadleaf"
-    if "tree" in phys or "tree" in com or sci.startswith("Quercus") or "beech" in com:
-        return "tree", "tree", True, "broadleaf"
-    if "convolvulaceae" in fam.lower() or "vine" in phys or "climbing" in phys:
-        return "herb, vine", "vine", False, "broadleaf"
-    if "shrub" in phys:
-        return "shrub", "shrub", False, "broadleaf"
-    return "herb", "herb", False, "broadleaf"
-
-def infer_uses(r, is_tree):
-    """Infer usage tags when EcoCrop CAT field is empty."""
-    use_tags = uses(r.get("CAT"))
-    if use_tags:
-        return use_tags
-    com = (r.get("COMNAME") or "").lower()
-    if any(w in com for w in ["corn", "maize", "potato", "sugarcane", "sugar cane", "sweet potato", "cassava", "rice", "wheat", "barley"]):
-        return ["food"]
-    if any(w in com for w in ["clover", "medick", "forage", "pasture"]):
-        return ["forage"]
-    if is_tree:
-        return ["materials", "timber"] if any(w in com for w in ["oil tree", "beech", "pine"]) else ["timber"]
-    return []
-
 def soil_depth_min(depr, dep):
     text = (depr or dep or "").strip().lower()
     if not text or text == "na":
@@ -163,6 +210,98 @@ def soil_depth_min(depr, dep):
     if "shallow" in text:
         return 20
     return None
+
+def parse_soil_texture(v):
+    """Parses soil texture string into normalized sorted list of categories.
+    Valid categories: 'light', 'medium', 'heavy', 'organic'.
+    'wide' means broad adaptability across all mineral textures -> ['heavy', 'light', 'medium'].
+    """
+    if not v or v.strip().lower() in ("", "na"):
+        return None
+    v = v.strip().lower()
+    tags = set()
+    for part in v.split(","):
+        part = part.strip()
+        if "wide" in part:
+            tags.update(["light", "medium", "heavy"])
+        for t in ("light", "medium", "heavy", "organic"):
+            if t in part:
+                tags.add(t)
+    return sorted(tags) if tags else None
+
+def parse_soil_depth(val):
+    """Returns depth in cm: deep -> 150, medium -> 50, shallow -> 20, very shallow -> 10."""
+    text = (val or "").strip().lower()
+    if not text or text == "na":
+        return None
+    if "deep" in text:
+        return 150
+    if "medium" in text:
+        return 50
+    if "very shallow" in text:
+        return 10
+    if "shallow" in text:
+        return 20
+    return None
+
+def parse_salinity(v):
+    """Normalizes EcoCrop salinity string:
+    'low (<4 dS/m)' / 'none' -> 'low'
+    'medium (4-10 dS/m)' -> 'medium'
+    'high (>10 dS/m))' -> 'high'
+    """
+    if not v or v.strip().lower() in ("", "na"):
+        return None
+    v = v.strip().lower()
+    if "high" in v:
+        return "high"
+    if "medium" in v:
+        return "medium"
+    if "low" in v or "none" in v:
+        return "low"
+    return None
+
+def parse_fertility(v):
+    """'low', 'moderate', 'high'."""
+    if not v or v.strip().lower() in ("", "na"):
+        return None
+    v = v.strip().lower()
+    for f in ("low", "moderate", "high"):
+        if f in v:
+            return f
+    return None
+
+def parse_drainage(v):
+    """Normalizes drainage categories: 'poorly', 'well', 'excessive'."""
+    if not v or v.strip().lower() in ("", "na"):
+        return None
+    v = v.strip().lower()
+    tags = set()
+    if "poorly" in v:
+        tags.add("poorly")
+    if "well" in v:
+        tags.add("well")
+    if "excessive" in v:
+        tags.add("excessive")
+    return sorted(tags) if tags else None
+
+def infer_habit(r, sci, famname, cat_raw, phys_raw, lispa_raw):
+    """Infer life form and habit when EcoCrop LIFO is missing."""
+    fam = (famname or "").split(":")[-1]
+    phys = (phys_raw or "").lower()
+    cat = (cat_raw or "").lower()
+
+    if fam in CONIFER_FAM:
+        return "tree", "tree", True, "conifer"
+    if "gramineae" in fam.lower() or "poaceae" in fam.lower() or "cereals" in cat:
+        return "grass", "grass", False, "broadleaf"
+    if "tree" in phys or "tree" in (r.get("COMNAME") or "").lower() or sci.startswith("Pinus") or sci.startswith("Quercus"):
+        return "tree", "tree", True, ("conifer" if fam in CONIFER_FAM else "broadleaf")
+    if "vine" in phys or "climbing" in phys:
+        return "vine", "vine", False, "broadleaf"
+    if "shrub" in phys:
+        return "shrub", "shrub", False, "broadleaf"
+    return "herb", "herb", False, "broadleaf"
 
 def growth_class(sci, famname, topt_mid, ktmpr):
     genus = sci.split()[0]
@@ -181,14 +320,15 @@ def main():
         code = int(r["EcoPortCode"])
         if code in EXCLUDED_DUPLICATE_IDS:
             continue
+        patch = SPECIES_PATCH.get(code, {})
 
-        lifo_raw = (r["LIFO"] or "").lower()
+        lifo_raw = (patch.get("lifo") or r["LIFO"] or "").lower()
         inferred_lifo, inferred_porte, inferred_tree, inferred_wood = (
             infer_habit(r, r["ScientificName"], r["FAMNAME"], r["CAT"], r["PHYS"], r["LISPA"])
             if not lifo_raw.strip() else (None, None, None, None)
         )
 
-        lifo_val = (r["LIFO"] or inferred_lifo or "").strip()
+        lifo_val = (patch.get("lifo") or r["LIFO"] or inferred_lifo or "").strip()
         if not lifo_val:
             continue  # no life form at all: unusable for the habit filter
 
@@ -216,48 +356,84 @@ def main():
         # GMIN/GMAX zeros are placeholders in the source
         cyc = [v if v else None for v in (vals["GMIN"], vals["GMAX"])]
         sci = TAXONOMIC_RENAMES.get(code, r["ScientificName"].strip())
-        gclass, wood_class = growth_class(sci, r["FAMNAME"],
-                                          (vals["TOPMN"] + vals["TOPMX"]) / 2, vals["KTMPR"])
-        wood = inferred_wood or wood_class
+        gclass, wood = growth_class(sci, r["FAMNAME"],
+                                    (vals["TOPMN"] + vals["TOPMX"]) / 2, vals["KTMPR"])
+        if "wood" in patch:
+            wood = patch["wood"]
+        elif inferred_wood:
+            wood = inferred_wood
 
-        porte = next((c for c in ("tree", "shrub", "vine", "grass", "herb") if c in lifo_raw), None) or inferred_porte or "herb"
-        is_tree = "tree" in lifo_raw or bool(inferred_tree)
+        porte = patch.get("porte") or next((c for c in ("tree", "shrub", "vine", "grass", "herb") if c in lifo_raw), None) or inferred_porte or "herb"
+        is_tree = patch["tree"] if "tree" in patch else ("tree" in lifo_raw or bool(inferred_tree))
+        is_annual = patch["annual"] if "annual" in patch else ("annual" in (r.get("LISPA") or "").lower())
+        photo = patch.get("photo", photoperiod(r["PHOTO"]))
+        use_list = patch.get("uses", uses(r["CAT"]))
 
-        # Annual: EcoCrop LISPA evidence only. A bare GMIN <= 90 heuristic
-        # mislabels true perennials (steppe grasses, water hyacinth), and the
-        # annual flag changes frost scoring, so inference needs positive
-        # life-form evidence. LISPA-empty recovered staples are patched below.
-        lispa_raw = (r.get("LISPA") or "").lower()
-        gmin_val = vals["GMIN"]
-        is_annual = "annual" in lispa_raw or (
-            "biennial" in lispa_raw and "perennial" not in lispa_raw
-            and gmin_val is not None and gmin_val <= 120
-            and code != 5622)  # Eichhornia crassipes: perennial invasive, EcoCrop 'biennial' is a data quirk
-        if code in (2175, 1265):  # Zea mays, Ipomoea batatas: LISPA-empty but grown as annuals
-            is_annual = True
+        genus = sci.split()[0]
+        fam_name = (r["FAMNAME"] or "").split(":")[-1].strip() or GENUS_FAMILY_FALLBACK.get(genus, "")
 
-        photo = photoperiod(r["PHOTO"])
-        use_list = infer_uses(r, is_tree)
+        text_opt = patch.get("text_opt", parse_soil_texture(r.get("TEXT")))
+        text_tol = patch.get("text_tol", parse_soil_texture(r.get("TEXTR")))
+        if text_opt:
+            text_opt = sorted(text_opt)
+        if text_opt and text_tol:
+            text_tol = sorted(set(text_tol).union(text_opt))
+        elif text_opt and not text_tol:
+            text_tol = text_opt
+        elif text_tol:
+            text_tol = sorted(text_tol)
+
+        depopt = patch.get("depopt", parse_soil_depth(r.get("DEP")))
+        dmin = soil_depth_min(r.get("DEPR"), r.get("DEP"))
+        if dmin is not None and depopt is not None and dmin > depopt:
+            depopt = dmin
+
+        sal_opt = patch.get("sal_opt", parse_salinity(r.get("SAL")))
+        sal_tol = patch.get("sal_tol", parse_salinity(r.get("SALR")))
+        sal_order = {"low": 1, "medium": 2, "high": 3}
+        if sal_opt and sal_tol and sal_order[sal_opt] > sal_order[sal_tol]:
+            sal_tol = sal_opt
+
+        fer_opt = patch.get("fer_opt", parse_fertility(r.get("FER")))
+        fer_tol = patch.get("fer_tol", parse_fertility(r.get("FERR")))
+
+        dra_opt = patch.get("dra_opt", parse_drainage(r.get("DRA")))
+        dra_tol = patch.get("dra_tol", parse_drainage(r.get("DRAR")))
+        if dra_opt and dra_tol:
+            dra_tol = sorted(set(dra_tol).union(dra_opt))
+        elif dra_opt and not dra_tol:
+            dra_tol = dra_opt
 
         out.append({
             "id": code,
             "sci": sci,
             "common": names[0] if names else sci,
             "aka": names[1:],
-            "family": (r["FAMNAME"] or "").split(":")[-1],
+            "family": fam_name,
             "lifo": lifo_val,
             "uses": use_list,
-            "temp": [vals["TMIN"], vals["TOPMN"], vals["TOPMX"], vals["TMAX"]],
-            "rain": [vals["RMIN"], vals["ROPMN"], vals["ROPMX"], vals["RMAX"]],
-            "ph": ph,
-            "ktmp": vals["KTMP"],       # killing temp, early growth
-            "ktmpr": vals["KTMPR"],      # killing temp, dormant season
+            "temp": patch.get("temp", [vals["TMIN"], vals["TOPMN"], vals["TOPMX"], vals["TMAX"]]),
+            "rain": patch.get("rain", [vals["RMIN"], vals["ROPMN"], vals["ROPMX"], vals["RMAX"]]),
+            "ph": patch.get("ph", ph),
+            "ktmp": patch.get("ktmp", vals["KTMP"]),       # killing temp, early growth
+            "ktmpr": patch.get("ktmpr", vals["KTMPR"]),      # killing temp, dormant season
             # obligate wetland: EcoCrop absolute drainage tolerates ONLY saturated soil
             **({"wet": True} if (r.get("DRAR") or r.get("DRA") or "").strip() == "poorly (saturated >50% of year)" else {}),
             # annual-capable: frost is tested on the growing window, not the winter
             **({"annual": True} if is_annual else {}),
             # minimum required soil depth (cm): absolute DEPR fallback to DEP
-            **({"depmin": dmin} if (dmin := soil_depth_min(r.get("DEPR"), r.get("DEP"))) is not None else {}),
+            **({"depmin": dmin} if dmin is not None else {}),
+            **({"depopt": depopt} if depopt is not None else {}),
+            **({"text_opt": text_opt} if text_opt else {}),
+            **({"text_tol": text_tol} if text_tol else {}),
+            **({"sal_opt": sal_opt} if sal_opt else {}),
+            **({"sal_tol": sal_tol} if sal_tol else {}),
+            **({"fer_opt": fer_opt} if fer_opt else {}),
+            **({"fer_tol": fer_tol} if fer_tol else {}),
+            **({"dra_opt": dra_opt} if dra_opt else {}),
+            **({"dra_tol": dra_tol} if dra_tol else {}),
+            # shade-tolerant / understory: EcoCrop optimal light intensity includes shade
+            **({"shade": True} if ("shade" in (r.get("LIOPMN") or "").lower() or "shade" in (r.get("LIOPMX") or "").lower()) else {}),
             "photo": photo,
             "cycle": cyc,
             "altmax": vals["ALTMX"],

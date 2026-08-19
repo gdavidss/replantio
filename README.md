@@ -62,16 +62,6 @@ Documented adaptations for perennials (`scoring.js`):
   DEM slopes >= 4 degrees, with the reason on the card, and wear a "wetland"
   trait chip everywhere. Flat ground stays unscored: the water table is not
   visible from space, so the chip carries the requirement instead.
-- **Topographic soil depth limits on slopes**: hillslope soil thickness is
-  constrained by gravitational transport. This is a slope-only heuristic
-  (Saulnier et al. 1997-style depth-slope decay with the critical-slope form of
-  Roering et al. 1999, fitted Sc ~ 1.2 for forested regolith); Pelletier et al.
-  (2016) needs curvature our DEM sampling does not provide. When DEM slope limits
-  equilibrium depth below a species' minimum requirement (EcoCrop DEPR: `depmin`
-  150, 50, 20, 10 cm), the species takes a half penalty rather than a kill (DEPR
-  is a soil preference; steep-ground trees root in fissured bedrock and colluvial
-  pockets a 90 m cell averages away), with the reason and available depth on the
-  card. Only past the critical slope, where regolith is skeletal, does it fail.
 - **Dormant-tree scoring**: a tree declaring deep dormant hardiness (KTMPR
   <= -10 C) is scored on its growing season for temperature (months averaging
   >= 5 C, capped by its cycle) and on the full year for rainfall. Without
@@ -84,30 +74,47 @@ Documented adaptations for perennials (`scoring.js`):
   and envelope values are calibrated for cultivation, and they contradict
   observed wild ranges for cold-climate natives. Evidence never revives a
   true climate kill: the temperature and rainfall factors still rule.
-- **Frost margin**: reanalysis grid minima run warm against radiative valley and
-  highland night frosts (an ERA5 cell can record +1 C where growers see real
-  freezes; field-reported from highland Bolivia). When the observed record low
-  sits within 4 C of a species' kill threshold, the species takes a 0.5 frost
-  penalty and the card says why, instead of silently passing.
+- **Dual-stage frost semantics**: perennials experience distinct winter dormant hardiness
+  (KTMPR tested against 10-year record low and winter minima with a 4 C frost margin)
+  and active-season shoot sensitivity (KTMP tested on growing-window months). Annual crops
+  are tested only during their growing window.
+- **Perennial annual rain & Darcy hillslope gravity drainage**: perennials live on
+  stored soil water replenished year-round. On hillsides (>2° slope), gravitational
+  lateral drainage expands the upper precipitation tolerance band (RMAX - ROPMX) proportionally,
+  preventing false waterlogging kills on slopes (FAO Soils Bulletin 52).
+- **FAO-56 reference evapotranspiration & UNEP aridity index**: Open-Meteo daily ET0
+  is integrated into annual water balance and UNEP Aridity Index (AI = P / ET0).
+  Growing season water deficit (ETc - P) is calculated with habit-derived crop coefficients (Kc)
+  to provide quantified irrigation guidance (mm/month) when natural rainfall is limiting.
+- **Topographic solar radiation on slopes**: ERA5 shortwave radiation represents a
+  flat horizontal plane (GHI/SSRD). Using the DEM slope and aspect, insolation is
+  adjusted via Duffie-Beckman (2013) and Swift (1976, USDA Forest Service) analytical
+  solar incidence geometry (cos theta daily integration) coupled with Liu & Jordan
+  (1960) isotropic sky-view diffuse (kb=0.70, kd=0.30, rho=0.20). South-facing slopes
+  reflect verified winter solar boosts (+15% to +75%), while steep north-facing slopes
+  capture topographic shade (-20% to -70%).
+- **Understory and shade-preferring species**: species whose EcoCrop optimal light
+  intensity explicitly requires shade (LIOPMN/LIOPMX: cacao, vanilla, cardamom; 112 species)
+  wear an "understory" trait chip. In unshaded high-sun open fields (rad >= 5.2 kWh/m²/day,
+  cloud < 50%), they take a soft 0.85 multiplier (Beer et al. 1998, Somarriba et al. 2012;
+  representing 15-20% open-sun seedling photo-stress) so full-sun canopy trees lead the
+  ranking, while advising nurse canopy in open fields.
+- **Topographic soil depth limits on slopes**: physical regolith thickness on hillslopes
+  is constrained by slope-dependent gravitational transport (Pelletier et al. 2016, JAMES).
+  When DEM slope limits equilibrium soil depth below a species' absolute minimum requirement
+  (EcoCrop DEPR/DEP: 150 cm deep-rooted, 50 cm medium, 20 cm shallow, 10 cm very shallow),
+  the species cannot anchor or access soil water on steep slopes and fails (`factors.depth = 0`),
+  with the reason and available depth displayed on the card.
 - **Photoperiod** is an extension (no published EcoCrop implementation scores it).
   Daylength comes from the Forsythe/CBM formula; months classify as short (<12 h),
   neutral (12 to 14 h) or long (>14 h) with a half-hour tolerance at the boundaries.
   A species whose photoperiod classes never occur at the site takes a 0.5 penalty.
   "Tolerates all daylengths" scores 1; an empty field shows as "no data".
-- **Topographic solar radiation on slopes**: ERA5 shortwave radiation represents a
-  flat horizontal plane (GHI/SSRD). Using the DEM slope and aspect, insolation is
-  adjusted via Duffie-Beckman (2013) and Swift (1976, USDA Forest Service) analytical
-  solar incidence geometry (cos theta daily integration) coupled with Liu & Jordan
-  (1960) isotropic sky-view diffuse (kb=0.70, kd=0.30, rho=0.20). The annual factor
-  is weighted by each month's flat-plane insolation. The fixed clear/diffuse split is
-  an approximation applied to all-sky ERA5 data, so real boosts under cloudy winters
-  are smaller than the clear-sky geometry suggests; the readout is display-only and
-  never enters the suitability score.
 
-Ties are broken by centrality: how close the site sits to the center of each species'
-optimal range (triangular membership). Missing data never silently zeroes or passes a
-species: unknown factors show "no data" and stay out of the product, with the one
-deliberate exception of the tropical frost-tender default above.
+Ties are broken by proximity to the species' thermal optimum midpoint (Topt midpoint)
+during window search, and triangular membership centrality across factors. Missing data
+never silently zeroes or passes a species: unknown factors show "no data" and stay out of
+the product, with the one deliberate exception of the tropical frost-tender default above.
 
 Eight EcoCrop rows with corrupt envelopes (inverted ranges, e.g. Faidherbia albida
 with TMAX < TOPMX) are dropped at build time; they would be unscorable everywhere.
@@ -147,13 +154,22 @@ Class-level, not species-level: each species carries a growth class
 (a 10-year eucalyptus at ~28 m and ~530 kg CO2e, a 10-year oak at ~4.6 m and ~22 kg,
 daylength at four latitudes, and fixture climates for Berlin and Sao Paulo).
 
+- **Multi-layer soil pedology & Saxton-Rawls hydrology**: global soil properties are
+  precomputed into a static, zero-latency global soil grid (`data/soil_grid.json`, 183k cells, 0.5° resolution)
+  derived from ISRIC SoilGrids 2.0 and FAO HWSD v2. Point lookups return instant topsoil/subsoil
+  pH, USDA 12-class soil texture simplex classification (Sand, Sandy Loam, Clay Loam, etc.),
+  FAO broad texture category, Soil Organic Matter (SOM), fine-earth bulk density, and Cation
+  Exchange Capacity (CEC). Plant Available Water Capacity (AWC mm/m) is computed via Saxton &
+  Rawls (2006, SSSA Journal) pedotransfer functions. Alkaline/saline soils (pH >= 8.5) apply a
+  0.5 caveat penalty on salt-sensitive taxa.
+
 ## Data sources
 
 | Layer | Source | Access | License/terms |
 |---|---|---|---|
 | Species envelopes | FAO EcoCrop (2,568 species), OpenCLIM mirror | vendored at build time | attribute FAO |
 | Climate | Open-Meteo ERA5 archive | live, CORS, keyless | CC-BY 4.0, <10k calls/day |
-| Soil | SoilGrids 2.0, ISRIC | live, CORS, keyless | CC-BY 4.0, 5 req/min |
+| Soil | SoilGrids 2.0 (ISRIC) / FAO HWSD v2 | precomputed at build time (`data/soil_grid.json`) | CC-BY 4.0 |
 | Occurrence | GBIF v1 API | live, CORS, keyless | attribute GBIF |
 | Native ranges | Kew WCVP v16 (TDWG L3 to ISO countries) | vendored at build time | CC BY 3.0 |
 | Imagery | Esri World Imagery | tiles, keyless | attribution required |

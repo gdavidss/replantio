@@ -1,4 +1,4 @@
-import { aggregateClimate, scoreSpecies, grade, gradeColor, monthlyDaylengths, monthlySlopeSolarFactors, monthlyFlatInsolation, maxSoilDepthCm } from "./scoring.js";
+import { aggregateClimate, scoreSpecies, grade, gradeColor, monthlyDaylengths, monthlySlopeSolarFactors, maxSoilDepthCm, aggregateSoilProfile, lookupSoil, setSoilGrid } from "./scoring.js";
 import { DICTS, LANGS, NAMES, LOCALES, MONTHS_ALL } from "./i18n.js";
 import { CLASSES, projection, maturityYears, co2eKgPerTree, co2eTonsPerHa, height, dbhCm, crownDiameterM, crownDisplayM, standDisplay, STEMS_PER_HA } from "./growth.js";
 
@@ -29,15 +29,15 @@ L.tileLayer("https://basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png",
   maxZoom: 20, attribution: "&copy; OpenStreetMap contributors &copy; CARTO",
 }).addTo(map);
 
-let SPECIES = [], NATIVES = {}, NATURALIZED = {}, NAMES_PT = {}, SOURCING = null, INVASIVES = {}, NATIVES_L3 = {}, L3_REGIONS = {}, NATIVES_GEO = {};
+let SPECIES = [], NATIVES = {}, NAMES_LOCAL = {}, SOURCING = null, INVASIVES = {}, NATIVES_L3 = {}, L3_REGIONS = {}, NATIVES_GEO = {}, SOIL_GRID = null;
 const speciesReady = Promise.all([
   fetch("data/species.json").then(r => r.json()).then(j => { SPECIES = j; }),
   fetch("data/natives.json").then(r => r.json()).then(j => { NATIVES = j; }).catch(() => {}), // optional layer
-  fetch("data/naturalized.json").then(r => r.json()).then(j => { NATURALIZED = j; }).catch(() => {}), // optional layer
+  fetch("data/soil_grid.json").then(r => r.ok ? r.json() : null).then(j => { SOIL_GRID = j; if (j) setSoilGrid(j); }).catch(() => {}), // precomputed global soil grid
   // per-language species names, loaded only for the active language
   // (architecture from PR #3 by @alierguney1; only sourced dictionaries ship:
-  // names_pt today, others as real vernacular data lands)
-  fetch(`data/names_${LANG}.json`).then(r => r.ok ? r.json() : {}).then(j => { NAMES_PT = j; }).catch(() => {}),
+  // names_pt, names_tr, etc.)
+  fetch(`data/names_${LANG}.json`).then(r => r.ok ? r.json() : {}).then(j => { NAMES_LOCAL = j; }).catch(() => {}),
   fetch("data/sourcing.json").then(r => r.json()).then(j => { SOURCING = j; }).catch(() => {}), // optional layer
   fetch("data/invasives.json").then(r => r.json()).then(j => { INVASIVES = j; }).catch(() => {}), // optional layer
   fetch("data/natives_l3.json").then(r => r.json()).then(j => { NATIVES_L3 = j; }).catch(() => {}), // optional layer
@@ -115,7 +115,7 @@ const track = (name, data) => { try { window.va?.("event", { name, data }); } ca
 
 // display name: Local vernacular when the UI is in a supported language (PT, TR, etc.) and we have a sourced one;
 // in non-EN the fallback is always the binomial, never an English trade name
-const localName = sp => NAMES_PT[sp.id]?.nome ?? null;
+const localName = sp => NAMES_LOCAL[sp.id]?.nome ?? null;
 const dispName = sp => {
   if (LANG !== "en") {
     const n = localName(sp);
@@ -123,8 +123,8 @@ const dispName = sp => {
   }
   return sp.common === sp.sci ? `<i>${sp.sci}</i>` : cap(sp.common);
 };
-// what a regional store search box wants: Brazilian vernacular if in BR, else the binomial
-const shopTerm = sp => (current?.cc === "BR" && LANG === "pt" ? localName(sp) : null) ?? sp.sci;
+// what a regional store search box wants: regional vernacular if in BR/TR, else the binomial
+const shopTerm = sp => ((current?.cc === "BR" && LANG === "pt") || (current?.cc === "TR" && LANG === "tr") ? localName(sp) : null) ?? sp.sci;
 // plain-text display name (no markup), for the sim pill and exports
 const plainName = sp => {
   if (LANG !== "en") { const n = localName(sp); return n ? cap(n) : sp.sci; }
@@ -408,21 +408,45 @@ async function fetchClimate(c, signal) {
 }
 
 async function fetchSoil(c, signal) {
+  if (!SOIL_GRID) {
+    try {
+      const res = await fetch("data/soil_grid.json", { signal });
+      if (res.ok) {
+        SOIL_GRID = await res.json();
+        setSoilGrid(SOIL_GRID);
+      }
+    } catch (e) {
+      if (e.name === "AbortError") throw e;
+    }
+  }
+  if (!SOIL_GRID) return null;
+  return lookupSoil(c.lat, c.lng, SOIL_GRID);
+}
+
+async function fetchLiveSoil250m(c) {
+  const ctl = new AbortController();
+  const timeoutId = setTimeout(() => ctl.abort(), 12000);
   try {
     const url = `https://rest.isric.org/soilgrids/v2.0/properties/query?lon=${c.lng.toFixed(4)}&lat=${c.lat.toFixed(4)}` +
-      `&property=phh2o&depth=0-5cm&depth=5-15cm&value=mean`;
-    const j = await (await fetch(url, { signal })).json();
-    const layer = j.properties?.layers?.find(l => l.name === "phh2o");
-    const THICKNESS = { "0-5cm": 5, "5-15cm": 10 };
-    let vsum = 0, wsum = 0;
-    for (const d of layer?.depths ?? []) {
-      const v = d.values.mean, w = THICKNESS[d.label] ?? 0;
-      if (v != null && w) { vsum += v * w; wsum += w; }
-    }
-    return { phh2o: wsum ? (vsum / wsum) / layer.unit_measure.d_factor : null };
-  } catch (e) {
-    if (e.name === "AbortError") throw e;
-    return null; // soil is optional: rate limit / outage degrades gracefully
+      `&property=phh2o&property=clay&property=sand&property=silt&property=soc&property=bdod&property=cec&property=cfvo` +
+      `&depth=0-5cm&depth=5-15cm&depth=15-30cm&depth=30-60cm&depth=60-100cm&value=mean`;
+    const res = await fetch(url, { signal: ctl.signal });
+    clearTimeout(timeoutId);
+    if (!res.ok) return null;
+    const j = await res.json();
+    const layers = j.properties?.layers;
+    if (!Array.isArray(layers) || !layers.length) return null;
+    const profile = aggregateSoilProfile(layers, 100);
+    if (!profile || profile.effectivePh == null) return null;
+    return {
+      ...profile,
+      phh2o: profile.effectivePh,
+      layers,
+      source: "isric_250m",
+    };
+  } catch {
+    clearTimeout(timeoutId);
+    return null;
   }
 }
 
@@ -528,41 +552,32 @@ async function analyze(pts) {
     $("#retry").onclick = () => analyze(pts);
     return;
   }
-  // optional layers must never block results: SoilGrids (beta) sometimes hangs
+  // optional layers must never block results
   const orNull = (p, ms) => Promise.race([p.catch(() => null), new Promise(r => setTimeout(() => r(null), ms))]);
-  const [soil, place, terrain] = await Promise.all([orNull(soilP, 15000), orNull(placeP, 8000), orNull(terrainP, 8000)]);
+  const [soil, place, terrain] = await Promise.all([orNull(soilP, 2000), orNull(placeP, 8000), orNull(terrainP, 8000)]);
   if (ctl.signal.aborted) return;
 
   await speciesReady;
-  const site = { ...agg, ph: soil?.phh2o ?? null, lat: c.lat, elevation: clim.elevation, place: place?.label ?? null, terrain };
+  const site = { ...agg, ph: soil?.phh2o ?? null, soil, lat: c.lat, elevation: clim.elevation, place: place?.label ?? null, terrain };
   if (terrain && terrain.slope >= 1.5 && terrain.aspectDeg != null && agg.rad != null) {
     const monthlyFactors = monthlySlopeSolarFactors(c.lat, terrain.slope, terrain.aspectDeg);
-    // annual factor weighted by each month's flat-plane insolation: a plain
-    // mean overweights low-energy winter months (and blows up near polar night)
-    const w = monthlyFlatInsolation(c.lat);
-    const wsum = w.reduce((a, b) => a + b, 0);
-    const avgFactor = wsum > 0 ? monthlyFactors.reduce((a, f, i) => a + f * w[i], 0) / wsum : 1;
+    const avgFactor = monthlyFactors.reduce((a, b) => a + b, 0) / 12;
     terrain.radFactor = avgFactor;
+    terrain.monthlyRadFactors = monthlyFactors;
     site.radSlope = agg.rad * avgFactor;
   }
   // native-evidence for the scorer: the species' polygon (Little) or regional
-  // (WCVP L3) range covers this exact point, so the local regime is survivable
+  // (WCVP L3 / Country) range covers this exact point, so the local regime is survivable
   const evL3 = L3_REGIONS[place?.cc]?.[place?.uf] ?? null;
   const evNative = sp => {
     const enc = NATIVES_GEO[sp.id], d = NATIVES_GEO._dominio;
     if (enc && d && c.lat >= d.lat[0] && c.lat <= d.lat[1] && c.lng >= d.lng[0] && c.lng <= d.lng[1])
       return geoInRange(enc, c.lat, c.lng);
-    return !!(evL3 && NATIVES_L3[sp.id]?.includes(evL3));
+    if (evL3) return !!NATIVES_L3[sp.id]?.includes(evL3);
+    return !!(place?.cc && NATIVES[sp.id]?.includes(place.cc));
   };
-  // countries with no regional table at all fall back to country-level
-  // nativity for the frost demote (same philosophy as invasiveHere: never
-  // punish a native in its homeland on missing data)
-  const evCountry = sp => !L3_REGIONS[place?.cc] && !!place?.cc && (NATIVES[sp.id] ?? []).includes(place.cc);
-  // Kew-recorded naturalization is the same establishment evidence for
-  // non-natives (tea in Turkey); frost demote only, never the invasive block
-  const evNaturalized = sp => !L3_REGIONS[place?.cc] && !!place?.cc && (NATURALIZED[sp.id] ?? []).includes(place.cc);
   const scored = SPECIES
-    .map(sp => ({ sp, ...scoreSpecies(sp, site, { native: evNative(sp), countryNative: evCountry(sp), countryNaturalized: evNaturalized(sp) }) }))
+    .map(sp => ({ sp, ...scoreSpecies(sp, site, { native: evNative(sp) }) }))
     .sort((a, b) => (b.score - a.score) || (b.fit - a.fit));
   step("ls-score");
 
@@ -752,12 +767,12 @@ const critIsDefault = () => current.filter === "all" && !current.matMax && !curr
 // species search: "does X grow here?" is a question, so it overrides the
 // chips (but never the guardrails: invasives answer with the reason, not
 // silence) and surfaces zero-score species whose card explains the why.
-const deacc = t => (t ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+const deacc = t => (t ?? "").replace(/İ/g, "i").replace(/I/g, "i").replace(/ı/g, "i").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 function searchMatches(q) {
   const needle = deacc(q.trim());
   if (!needle) return null;
   return current.scored.filter(s => {
-    const e = NAMES_PT[s.sp.id];
+    const e = NAMES_LOCAL[s.sp.id];
     return [e?.nome, ...(e?.aka ?? []), s.sp.common, s.sp.sci, ...(s.sp.aka ?? [])]
       .some(n => n && deacc(n).includes(needle));
   }).slice(0, 30);
@@ -826,18 +841,54 @@ function renderResults() {
     ? tfmt(current.nativeOnly ? "{n} native plants would grow well here" : "{n} plants would grow well here", { n: `<b>${fmt(goodPool)}</b>` })
     : tfmt("{s} of {n} species rate suitable or better", { s: `<b>${fmt(suitable)}</b>`, n: `<b>${fmt(SPECIES.length)}</b>` });
 
+  const texLabel = site.soil?.usdaTexture ? tr(site.soil.usdaTexture) : null;
+  const texTooltip = site.soil?.usdaTexture
+    ? `${texLabel} (${site.soil.sandPct}% ${tr("sand")}, ${site.soil.clayPct}% ${tr("clay")}) &middot; ${tr("USDA Soil Texture Simplex & FAO Category")}`
+    : tr("USDA Soil Texture Simplex & FAO Category");
+
+  const somTooltip = site.soil?.socGKg != null
+    ? `${fmt(site.soil.somPct, 1)}% SOM &middot; SOC: ${fmt(site.soil.socGKg, 1)} g/kg &middot; ${tr("Soil organic matter from SoilGrids SOC")}`
+    : tr("Soil organic matter from SoilGrids SOC");
+
+  const sunTooltip = tr("mean daily shortwave radiation, all weather included");
+  const sunValue = site.terrain?.radFactor != null && Math.abs(site.terrain.radFactor - 1) >= 0.03
+    ? `${fmt(site.radSlope ?? site.rad, 1)} kWh/m² <span class="adm">(${site.terrain.radFactor >= 1 ? "+" : ""}${Math.round((site.terrain.radFactor - 1) * 100)}%)</span>`
+    : (site.rad != null ? `${fmt(site.rad, 1)} kWh/m²` : tr("n/a"));
+
+  const slopeFacing = site.terrain?.slope != null
+    ? (site.terrain.slope < 1.5
+        ? `${fmt(site.terrain.slope, 1)}° <span class="adm">(${tr("flat")})</span>`
+        : `${fmt(site.terrain.slope, 1)}° ${tr(site.terrain.facing ?? "")} <span class="adm">(${site.terrain.aspectDeg ?? 0}°)</span>`)
+    : tr("n/a");
+  const slopeTooltip = site.terrain?.aspectDeg != null
+    ? `${fmt(site.terrain.slope, 1)}° ${tr("slope")} &middot; ${site.terrain.aspectDeg}° ${site.terrain.facing ? tr(site.terrain.facing) : ""} &middot; ${tr("Copernicus 90m DEM terrain slope & aspect")}`
+    : tr("Copernicus 90m DEM terrain slope & aspect");
+
+  const isPointSoil = site.soil?.source === "isric_250m";
+  const soilAction = isPointSoil
+    ? `<span style="font-size:11px;color:var(--c-brand);font-weight:600">✓ ${tr("High-precision soil active")}</span>`
+    : `<button class="chip chip-sm" data-refine-soil style="font-size:11px;padding:2px 8px;cursor:pointer" data-tip="${tr("Fetches high-precision soil details for this exact point to improve accuracy")}">🔬 ${tr("Enhance soil accuracy")}</button>`;
+
   const whyBlock = `
-    <div class="section-h">${tr("Site climate &middot; ERA5 2015&ndash;2024")}</div>
+    <div class="section-h" style="display:flex;justify-content:space-between;align-items:center">
+      <span>${tr("Site climate & soil")}</span>
+      ${soilAction}
+    </div>
     <div class="site-fig">${climateSvg(site)}</div>
     <div class="readout">
       ${rd(tr("soil pH"), site.ph != null ? fmt(site.ph, 1) : tr("no data"))}
+      ${rd(tr("soil texture"), texLabel ?? tr("no data"), texTooltip)}
+      ${rd(tr("available water"), site.soil?.awcMm != null ? `${fmt(site.soil.awcMm)} mm/m` : tr("no data"), tr("Saxton-Rawls plant available water capacity (AWC)"))}
+      ${rd(tr("organic matter"), site.soil?.somPct != null ? `${fmt(site.soil.somPct, 1)}%` : tr("no data"), somTooltip)}
+      ${rd(tr("bulk density"), site.soil?.bdodGCm3 != null ? `${fmt(site.soil.bdodGCm3, 2)} g/cm³` : tr("no data"), tr("Bulk density of the fine earth fraction"))}
+      ${rd(tr("CEC"), site.soil?.cecCmolKg != null ? `${fmt(site.soil.cecCmolKg, 1)} cmol/kg` : tr("no data"), tr("Cation exchange capacity at pH 7"))}
+      ${rd(tr("soil depth"), site.soil ? `${Math.min(site.soil.maxDepthCm ?? 100, maxSoilDepthCm(site.terrain?.slope ?? 0))} cm` : tr("no data"), tr("Effective root-accessible soil depth on slope (Pelletier 2016)"))}
       ${rd(tr("elevation"), `${fmt(site.elevation)} m`)}
+      ${rd(tr("slope / aspect"), slopeFacing, slopeTooltip)}
+      ${rd(tr("sun"), sunValue, sunTooltip)}
       ${rd(tr("daylength"), `${fmt(Math.min(...dls), 1)}&ndash;${fmt(Math.max(...dls), 1)} h`)}
       ${rd(tr("record low"), site.absMin != null ? `${fmt(site.absMin)} °C` : tr("n/a"))}
-      ${rd(tr("sun"), site.terrain?.radFactor != null && Math.abs(site.terrain.radFactor - 1) >= 0.03 ? `${fmt(site.radSlope ?? site.rad, 1)} ${tr("kWh/m²·day")} <span style="font-size:10px;opacity:0.8">(${site.terrain.radFactor >= 1 ? "+" : ""}${Math.round((site.terrain.radFactor - 1) * 100)}% ${tr("on slope")})</span>` : (site.rad != null ? `${fmt(site.rad, 1)} ${tr("kWh/m²·day")}` : tr("n/a")), tr("mean daily shortwave radiation, all weather included"))}
       ${rd(tr("humidity"), site.rh != null ? `${fmt(site.rh)}%` : tr("n/a"))}
-      ${rd(tr("cloud"), site.cloud != null ? `${fmt(site.cloud)}%` : tr("n/a"), tr("high humidity plus high cloud cover marks fog-prone sites"))}
-      ${rd(tr("slope"), site.terrain ? `${fmt(site.terrain.slope)}°${site.terrain.facing ? ` ${tr("facing")} ` + tr(site.terrain.facing) : ""}` : tr("n/a"))}
       ${rd(tr("aridity"), site.aridity != null ? `${tr(site.aridity)} <span class="adm">(AI: ${fmt(site.ai, 2)})</span>` : tr("n/a"), tr("UNEP Aridity Index (P / ET₀)"))}
     </div>
     <div class="footnote" style="margin-top:10px">
@@ -1050,6 +1101,8 @@ content.addEventListener("click", e => {
   if (e.target.closest("[data-csv]")) { track("export", { kind: "csv" }); csvExport(); return; }
   if (e.target.closest("[data-more]")) { current.shown += 20; renderResults(); loadRowPhotos(); return; }
   if (e.target.closest("[data-force]")) { current.force = true; renderResults(); loadRowPhotos(); return; }
+  const refineBtn = e.target.closest("[data-refine-soil]");
+  if (refineBtn) { refineSoilWithLive250m(refineBtn); return; }
 
   const head = e.target.closest("[data-toggle]");
   if (head) {
@@ -1062,6 +1115,55 @@ content.addEventListener("click", e => {
     else stopSim();
   }
 });
+
+function rescoreCurrent() {
+  if (!current) return;
+  const evL3 = L3_REGIONS[current.cc]?.[current.uf] ?? null;
+  const evNative = sp => {
+    const enc = NATIVES_GEO[sp.id], d = NATIVES_GEO._dominio;
+    if (enc && d && current.center.lat >= d.lat[0] && current.center.lat <= d.lat[1] && current.center.lng >= d.lng[0] && current.center.lng <= d.lng[1])
+      return geoInRange(enc, current.center.lat, current.center.lng);
+    if (evL3) return !!NATIVES_L3[sp.id]?.includes(evL3);
+    return !!(current.cc && NATIVES[sp.id]?.includes(current.cc));
+  };
+  current.scored = SPECIES
+    .map(sp => ({ sp, ...scoreSpecies(sp, current.site, { native: evNative(sp) }) }))
+    .sort((a, b) => (b.score - a.score) || (b.fit - a.fit));
+  renderResults();
+  loadRowPhotos();
+}
+
+async function refineSoilWithLive250m(btn) {
+  if (!current?.center || btn.disabled) return;
+  const originalHtml = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = `⏳ ${tr("Loading detailed soil data...")}`;
+  try {
+    const liveSoil = await fetchLiveSoil250m(current.center);
+    if (liveSoil && liveSoil.effectivePh != null) {
+      current.site.soil = liveSoil;
+      current.site.ph = liveSoil.effectivePh;
+      rescoreCurrent();
+      return;
+    } else {
+      btn.innerHTML = `⚠️ ${tr("Detailed soil data unavailable (urban area or timeout)")}`;
+      setTimeout(() => {
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = originalHtml;
+        }
+      }, 3500);
+    }
+  } catch {
+    btn.innerHTML = `⚠️ ${tr("Detailed soil data unavailable (urban area or timeout)")}`;
+    setTimeout(() => {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+      }
+    }, 3500);
+  }
+}
 
 // species envelope vs this site: dim track = tolerated, bright = optimal,
 // tick = where the site sits
@@ -1088,7 +1190,9 @@ function windowVals(s) {
     const m = (start + k) % 12;
     tsum += current.site.tavg[m]; rtot += current.site.prec[m];
   }
-  return { wt: tsum / months, wr: rtot };
+  const isPerennial = !s.sp.annual;
+  const wr = isPerennial ? (current.site.annualRain ?? current.site.prec.reduce((a, b) => a + b, 0)) : rtot;
+  return { wt: tsum / months, wr };
 }
 
 // One figure, one month axis: temperature above the spine, rain hanging below.
@@ -1163,8 +1267,10 @@ function sourcingMarkup(sp) {
   if (!shops.length && !dirs.length) return "";
   // BR searches by vernacular, US by English common name; everywhere else the
   // stores index botanical names, so the binomial is the term that actually hits
-  const term = cc === "BR" ? shopTerm(sp) : cc === "US" ? (sp.common !== sp.sci ? cap(sp.common) : sp.sci) : sp.sci;
-  const kindWord = sp.tree || sp.porte === "shrub" ? "muda" : "sementes";
+  const term = cc === "BR" || cc === "TR" ? shopTerm(sp) : cc === "US" ? (sp.common !== sp.sci ? cap(sp.common) : sp.sci) : sp.sci;
+  const kindWord = LANG === "pt" ? (sp.tree || sp.porte === "shrub" ? "muda" : "sementes") :
+    LANG === "tr" ? (sp.tree || sp.porte === "shrub" ? "fidan" : "tohum") :
+    (sp.tree || sp.porte === "shrub" ? "seedling" : "seeds");
   // verified product links first: only stores that provably stock THIS species
   const kind = sp.tree || sp.porte === "shrub" ? "muda" : "semente";
   const prod = SOURCING.products?.[sp.id] ?? {};
@@ -1215,21 +1321,36 @@ function speciesDetail(id) {
     const notes = [];
     if (s.factors.photo != null && s.factors.photo < 1) notes.push(tr("Photoperiod outside this species' range: 0.5 penalty applied."));
     if (s.factors.drain === 0) notes.push(tfmt("This is a wetland species (needs saturated soil or standing water), and this point sits on a {n}° slope.", { n: fmt(current.site.terrain?.slope ?? 0) }));
-    if (s.factors.depth != null && s.factors.depth < 1) notes.push(tfmt("Requires at least {req} cm soil depth (EcoCrop), but this {slope}° slope supports only ~{avail} cm equilibrium soil.", { req: fmt(sp.depmin), slope: fmt(current.site.terrain?.slope ?? 0), avail: fmt(maxSoilDepthCm(current.site.terrain?.slope ?? 0)) }));
-    if (s.factors.rain < 0.2 && s.factors.temp >= 0.5) notes.push(tr("Rainfall is the limiting factor here. The model scores rainfed growing only; irrigation changes this picture entirely."));
-    // wet-margin demote: rain 0.5 with the scored total above the ceiling can
-    // only come from the margin (the trapezoid is 0 past RMAX)
-    const rTot = (sp.tree && (sp.ktmpr ?? 99) <= -10) || s.window.months === 12 ? current.site.annualRain : wr;
-    if (s.factors.rain === 0.5 && rTot > sp.rain[3])
-      notes.push(tr("Annual rain here sits just above this species' EcoCrop ceiling. Excess-rain limits proxy disease and drainage rather than survival, so it takes a half penalty instead of exclusion."));
+    if (s.factors.depth === 0) {
+      const avail = Math.min(current.site.soil?.maxDepthCm ?? 200, maxSoilDepthCm(current.site.terrain?.slope ?? 0));
+      notes.push(tfmt("Requires at least {req} cm soil depth (EcoCrop), but this site supports only ~{avail} cm soil.", { req: fmt(sp.depmin), avail: fmt(avail) }));
+    }
+    if (s.factors.texture === 0 && current.site.soil?.usdaTexture) {
+      notes.push(tfmt("Soil texture mismatch: site is {siteTex}, but this species requires {reqTex}.", {
+        siteTex: current.site.soil.usdaTexture,
+        reqTex: (sp.text_opt ?? sp.text_tol ?? []).join(", ")
+      }));
+    } else if (s.factors.texture === 0.6 && current.site.soil?.usdaTexture) {
+      notes.push(tfmt("Soil texture ({siteTex}) is secondary tolerance for this species (0.6 factor applied).", {
+        siteTex: current.site.soil.usdaTexture
+      }));
+    }
+    if (s.factors.salinity === 0.5) {
+      notes.push(tr("High soil alkalinity/salinity (pH >= 8.5): salt-sensitive species takes a 0.5 caveat penalty."));
+    }
+    if (s.window.deficit > 50 && s.factors.temp >= 0.4) {
+      if (s.factors.rain < 0.2) {
+        notes.push(tfmt("Rainfall is the limiting factor here (growing season water deficit: ~{n} mm). The model scores rainfed growing only; irrigation changes this picture entirely.", { n: fmt(s.window.deficit) }));
+      } else if (s.factors.rain < 0.6) {
+        notes.push(tfmt("Natural rainfall is deficient during the growing season (water deficit: ~{n} mm). Supplemental irrigation is required for optimal yield.", { n: fmt(s.window.deficit) }));
+      }
+    } else if (s.factors.rain < 0.2 && s.factors.temp >= 0.5) {
+      notes.push(tr("Rainfall is the limiting factor here. The model scores rainfed growing only; irrigation changes this picture entirely."));
+    }
     if (s.factors.frost === 0.5) {
       const kt = sp.ktmpr ?? sp.ktmp ?? 0;
       notes.push(current.site.absMin != null && current.site.absMin < kt
-        ? (nativeRegion(sp) === true
-          ? tr("EcoCrop lists a killing temperature above this site's record low, but the species is native right here per its mapped range. Penalized half instead of excluded; the hardiness field is the suspect.")
-          : nativeHere(sp) === true
-            ? tr("EcoCrop lists a killing temperature above this site's record low, but the species is native to this country. Penalized half instead of excluded; the hardiness field is the suspect.")
-            : tr("EcoCrop lists a killing temperature above this site's record low, but Kew records the species as naturalized in this country. Penalized half instead of excluded; the hardiness field is the suspect."))
+        ? tr("EcoCrop lists a killing temperature above this site's record low, but the species is native right here per its mapped range. Penalized half instead of excluded; the hardiness field is the suspect.")
         : tr("The record low here sits within the grid's frost margin. Reanalysis under-reports valley and highland night frosts, so this frost-tender species takes a half penalty."));
     }
     if (s.factors.chill != null && s.factors.chill < 1) notes.push(tr("Needs winter dormancy; the coldest month here is too warm for it."));
@@ -1243,7 +1364,7 @@ function speciesDetail(id) {
   return `
     <div class="sp-photo" data-hero="${sp.id}" hidden></div>
     <div class="sp-meta"><span class="grade">${tr(grade(s.score))}</span><span class="sep">&middot;</span>${tfmt("{rate} growth &middot; {zone}", { rate: tr(rate), zone: tr(zone) })}</div>
-    <div class="sp-uses">${sp.wet ? `<span class="it wet" title="${tr("Needs standing water or saturated soil year-round (EcoCrop drainage)")}">${tr("wetland")}</span>` : ""}${sp.uses.map(u => `<span class="it">${tr(USE_LABELS[u] ?? u)}</span>`).join("")}</div>
+    <div class="sp-uses">${sp.wet ? `<span class="it wet" title="${tr("Needs standing water or saturated soil year-round (EcoCrop drainage)")}">${tr("wetland")}</span>` : ""}${sp.shade ? `<span class="it shade" title="${tr("Understory species: prefers partial shade or nurse canopy in high sun")}">${tr("understory")}</span>` : ""}${sp.uses.map(u => `<span class="it">${tr(USE_LABELS[u] ?? u)}</span>`).join("")}</div>
     ${sourcingMarkup(sp)}
     ${sp.tree ? `<div class="growth-fig">${growthSvg(sp)}
       <div class="fig-cap">${tfmt("Reaches ~95% of its max height in ~{n} years (class-level model).", { n: fmt(mat) })}</div>
@@ -1869,9 +1990,7 @@ async function futureOutlook(ctl) {
     const agg = aggregateClimate(j.daily);
     const fsite = { ...agg, ph: current.site.ph, lat: c.lat };
     for (const s of current.scored) {
-      s.f45 = scoreSpecies(s.sp, fsite, { native: nativeRegion(s.sp) === true,
-        countryNative: !L3_REGIONS[current.cc] && nativeHere(s.sp) === true,
-        countryNaturalized: !L3_REGIONS[current.cc] && !!current.cc && (NATURALIZED[s.sp.id] ?? []).includes(current.cc) }).score;
+      s.f45 = scoreSpecies(s.sp, fsite, { native: nativeRegion(s.sp) === true }).score;
       updateF45(s);
     }
   } catch { /* the projection is an enhancement; fail silent */ }
@@ -2329,14 +2448,14 @@ function csvExport() {
   if (!current) return;
   const esc = v => `"${String(v ?? "").replace(/"/g, '""')}"`;
   const head = ["scientific_name", "common_name", "family", "score", "fit", "score_2040s",
-    "temp_factor", "rain_factor", "ph_factor", "photo_factor", "frost_factor", "chill_factor",
+    "temp_factor", "rain_factor", "ph_factor", "texture_factor", "depth_factor", "salinity_factor", "photo_factor", "frost_factor", "chill_factor",
     "native_here", "growth_class", "uses"];
   // the CSV mirrors the panel exactly: active filters, the marginality cut
   // and the invasive exclusion all apply; clear the filters to export wide
   const rows = current.scored.filter(s => critMatch(s, critState())).map(s => [
     s.sp.sci, s.sp.common, s.sp.family,
     s.score.toFixed(3), s.fit.toFixed(3), s.f45 != null ? s.f45.toFixed(3) : "",
-    ...[s.factors.temp, s.factors.rain, s.factors.ph, s.factors.photo, s.factors.frost, s.factors.chill]
+    ...[s.factors.temp, s.factors.rain, s.factors.ph, s.factors.texture, s.factors.depth, s.factors.salinity, s.factors.photo, s.factors.frost, s.factors.chill]
       .map(v => v == null ? "" : (+v).toFixed(3)),
     nativeHere(s.sp) ?? "", s.sp.gclass, s.sp.uses.join("|"),
   ].map(esc).join(","));

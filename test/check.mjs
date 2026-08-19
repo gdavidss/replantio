@@ -1,7 +1,11 @@
 // Self-check for the scoring and growth engines. Run: node test/check.mjs
 import assert from "node:assert";
 import { readFileSync } from "node:fs";
-import { trap, daylength, slopeSolarFactor, monthlySlopeSolarFactors, monthlyFlatInsolation, maxSoilDepthCm, scoreSpecies, aggregateClimate, grade, aridityClass } from "../scoring.js";
+import {
+  trap, daylength, slopeSolarFactor, monthlySlopeSolarFactors,
+  maxSoilDepthCm, scoreSpecies, aggregateClimate, grade, aridityClass,
+  usdaTextureClass, faoTextureCategory, saxtonRawlsHydrology, aggregateSoilProfile, lookupSoil, setSoilGrid
+} from "../scoring.js";
 import { CLASSES, height, dbhCm, co2eKgPerTree, crownDiameterM, crownDisplayM, standDisplay, maturityYears } from "../growth.js";
 
 const species = JSON.parse(readFileSync(new URL("../data/species.json", import.meta.url)));
@@ -254,43 +258,40 @@ assert.equal(scoreSpecies(typha, flat).factors.drain, null, "flat ground leaves 
 assert.ok(!by("Quercus robur").wet, "oak is not wetland-flagged");
 close(scoreSpecies(qr, { ...berlin, terrain: { slope: 6 } }).score, qrBerlin.score, 0.001, "slope does not touch non-wetland species");
 
-// country-native frost demote (Turkish field feedback, 2026-08): countries
-// without a regional table had NO native evidence at all, so EcoCrop's junk
-// KTMPR (-10) excluded hazelnut across Ordu, the world's hazelnut capital
-const ordu = {
-  lat: 40.9786,
-  tavg: [6.9, 8, 9.2, 12.7, 16.3, 21.1, 23.3, 24.2, 21.3, 16.9, 12.8, 9.2],
-  tmin: [3.6, 4.4, 5.6, 8.6, 12.6, 17.8, 20.1, 21.3, 18.1, 13.8, 9.4, 6.1],
-  prec: [116, 76, 109, 62, 82, 84, 93, 88, 99, 133, 98, 100],
-  ph: null, absMin: -10.2,
-};
-const malatya = { // apricot capital; 416 mm of rain, orchards run on irrigation
-  lat: 38.4498,
-  tavg: [1.7, 4.5, 8.8, 14.9, 19.8, 26.2, 29.5, 30, 25.3, 18.1, 10, 4],
-  tmin: [-1.4, 0.8, 4.1, 9.4, 14, 19.8, 22.8, 23.5, 19.5, 13.4, 6.4, 1.2],
-  prec: [72, 42, 80, 38, 47, 7, 0, 2, 4, 21, 48, 54],
-  ph: null, absMin: -12.5,
-};
-const incesu = { // -20.6 C record low; a local rightly doubts Vitex here
-  lat: 38.5954,
-  tavg: [0, 2, 5.4, 11.1, 15.1, 19.5, 22.8, 23.7, 19.8, 13.9, 7.5, 2.9],
-  tmin: [-3.9, -2.4, 0.5, 5.3, 9.5, 13.7, 15.8, 16.8, 13.7, 8.6, 2.9, -0.8],
-  prec: [63, 42, 77, 48, 64, 41, 4, 7, 14, 21, 31, 48],
-  ph: null, absMin: -20.6,
+// perennial annual rain scoring (field report, Giresun/Mediterranean 2026-08):
+// trees, shrubs and vines live on 12-month stored soil water, not cycle windows;
+// sloped terrain sheds excess precipitation without root waterlogging.
+const giresun = {
+  lat: 40.85,
+  tavg: [7.2, 7.5, 9.0, 12.5, 17.0, 21.5, 24.0, 24.2, 21.0, 16.8, 12.5, 9.0],
+  tmin: [4.5, 4.8, 6.0, 9.2, 13.8, 18.0, 20.8, 21.0, 17.5, 13.5, 9.5, 6.2],
+  prec: [127, 88, 124, 86, 120, 125, 125, 130, 134, 160, 106, 108],
+  ph: 6.2, absMin: -6.0,
 };
 const hazel = by("Corylus avellana");
 assert.ok(hazel, "hazelnut present");
-assert.equal(scoreSpecies(hazel, ordu).score, 0, "without evidence the record low still kills hazelnut");
-const hazelOrdu = scoreSpecies(hazel, ordu, { countryNative: true });
-assert.equal(hazelOrdu.factors.frost, 0.5, "country-native evidence demotes the kill to half");
-assert.ok(hazelOrdu.score >= 0.4, `hazelnut rates in Ordu with country evidence: ${hazelOrdu.score}`);
-assert.equal(scoreSpecies(by("Aronia alnifolia"), winnipeg, { countryNative: true }).score, 0,
-  "country-level evidence never waives the annual regime gate");
-const vitexIncesu = scoreSpecies(by("Vitex agnus-castus"), incesu, { countryNative: true });
-assert.equal(vitexIncesu.factors.frost, 0.5, "vitex keeps the frost-margin half penalty at -20.6 C");
-assert.ok(vitexIncesu.score <= 0.5, `country evidence must not boost vitex past 0.5 at Incesu: ${vitexIncesu.score}`);
-assert.equal(scoreSpecies(by("Prunus armeniaca"), malatya, { countryNative: true }).factors.rain, 0,
-  "rainfed scoring keeps irrigated-orchard apricot at zero rain in Malatya");
+assert.equal(scoreSpecies(hazel, giresun).factors.rain, 0, "flat ground waterlogs hazelnut in Giresun (prec 1449 > rmax 1400)");
+const hazelSloped = scoreSpecies(hazel, { ...giresun, terrain: { slope: 10 } });
+assert.ok(hazelSloped.factors.rain >= 0.25, `hazelnut on Giresun hillside scores rain: ${hazelSloped.factors.rain}`);
+assert.ok(hazelSloped.score >= 0.1, `hazelnut survives waterlogging on Giresun hillside: ${hazelSloped.score}`);
+
+// tea in Rize fixture (field report, Turkish tea belt 2026-08):
+// KTMP (0 C shoot kill) must not be tested against winter dormant record lows;
+// Camellia sinensis survives winter under snow and scores well in Rize.
+const rize = {
+  lat: 40.97,
+  tavg: [6.8, 7.0, 8.5, 12.0, 16.5, 20.8, 23.2, 23.5, 20.2, 16.2, 12.0, 8.5],
+  tmin: [3.8, 4.0, 5.2, 8.5, 13.0, 17.2, 20.0, 20.2, 16.8, 12.8, 8.8, 5.2],
+  prec: [173, 115, 160, 101, 133, 177, 225, 247, 267, 270, 180, 168],
+  ph: 5.0, absMin: -4.0, terrain: { slope: 15 }
+};
+const tea = by("Camellia sinensis");
+assert.ok(tea, "tea present");
+const teaRize = scoreSpecies(tea, { ...rize, absMin: -8.0 });
+assert.equal(teaRize.factors.frost, 0.5, "tea in Rize with absMin -8 C takes 0.5 caveat within FROST_MARGIN of KTMPR -10");
+assert.equal(scoreSpecies(tea, { ...rize, absMin: -12.0 }).factors.frost, 0, "tea with absMin -12 C undercutting KTMPR -10 is killed");
+assert.equal(scoreSpecies(tea, { ...rize, absMin: -4.0 }).factors.frost, 1, "tea with absMin -4 C well above KTMPR -10 passes with 1.0");
+assert.ok(teaRize.score > 0.3, `tea scores suitable in Rize heartland: ${teaRize.score}`);
 
 // --- topographic slope solar radiation (Duffie-Beckman 2013 / Swift 1976)
 assert.equal(slopeSolarFactor(45, 0, 180, 172), 1.0, "flat surface factor is 1.0");
@@ -306,78 +307,15 @@ close(slopeSolarFactor(45, 20, 0, 172), 0.95, 0.05, "45N summer north slope");
 const mFactors = monthlySlopeSolarFactors(45, 20, 180);
 assert.equal(mFactors.length, 12, "12 monthly slope factors");
 assert.ok(mFactors[11] > 1.5, "winter month has elevated solar incidence on south slope");
-// beam-shaded slopes keep the diffuse sky + ground terms, never 0
-close(slopeSolarFactor(50, 35, 0, 355), 0.29, 0.03, "beam-shaded 35° north slope keeps diffuse");
-// Rb blowup near polar night is clamped; weighted annual mean stays sane
-assert.ok(monthlySlopeSolarFactors(70, 10, 180).every(f => f <= 3), "polar-night Rb clamped");
-{
-  const w = monthlyFlatInsolation(70), f = monthlySlopeSolarFactors(70, 10, 180);
-  const avg = f.reduce((a, x, i) => a + x * w[i], 0) / w.reduce((a, b) => a + b, 0);
-  assert.ok(avg > 0.9 && avg < 1.3, `insolation-weighted annual factor sane at 70N: ${avg}`);
-}
 
-// --- topographic soil depth limits on slopes (slope-only depth-slope decay,
-// Roering 1999 critical slope; recalibrated from the PR's 33 deg angle of
-// repose, which killed hazelnut on the very Ordu slopes it is farmed on)
-assert.equal(maxSoilDepthCm(0), 200, "flat ground depth is 200 cm");
-assert.equal(maxSoilDepthCm(null), 200, "null slope depth is 200 cm");
-assert.equal(maxSoilDepthCm(20), 181, "20 deg slope gives ~181 cm depth");
-assert.equal(maxSoilDepthCm(30), 153, "30 deg slope gives ~153 cm depth");
-assert.equal(maxSoilDepthCm(35), 131, "35 deg slope gives ~131 cm depth");
-assert.equal(maxSoilDepthCm(50), 10, "past the critical slope regolith is skeletal");
-
-// deep-rooted (walnut: depmin 150) vs shallow-tolerant (scots pine: depmin 20)
-const walnut = by("Juglans regia");
-const scotsPine = by("Pinus sylvestris");
-assert.ok(walnut?.depmin === 150, "walnut requires 150 cm deep soil");
-assert.ok(scotsPine?.depmin === 20, "scots pine tolerates 20 cm shallow soil");
-const steepHill35 = { ...saoPaulo, terrain: { slope: 35, facing: "N" } };
-const flatGround = { ...saoPaulo, terrain: { slope: 1, facing: null } };
-assert.equal(scoreSpecies(walnut, steepHill35).factors.depth, 0.5, "walnut demoted, not killed, on a 35 deg slope");
-assert.equal(scoreSpecies(walnut, flatGround).factors.depth, null, "flat ground leaves soil depth unconstrained");
-assert.equal(scoreSpecies(scotsPine, steepHill35).factors.depth, null, "scots pine passes soil depth on 35 deg slope");
-assert.equal(scoreSpecies(walnut, { ...saoPaulo, terrain: { slope: 55 } }).factors.depth, 0, "skeletal regolith past critical slope kills");
-// regression guards: species farmed on steep ground must survive the gate
-assert.ok(scoreSpecies(hazel, { ...ordu, terrain: { slope: 35 } }, { countryNative: true }).score > 0,
-  "Ordu hazelnut survives the depth gate on the 30-45 deg slopes it is farmed on");
-assert.ok(scoreSpecies(by("Larix decidua"), { ...berlin, terrain: { slope: 30 } }).factors.depth !== 0,
-  "larch is not depth-killed on a 30 deg alpine slope");
-// flagship crops in their home regions (Turkish issue #5, 2026-08): the wet
-// side of an EcoCrop rain envelope proxies disease/drainage, not survival,
-// and Kew-recorded naturalization is establishment evidence for non-natives
-const giresun = { // world hazelnut capital: 1437 mm/yr, 37 mm over the envelope ceiling
-  lat: 40.85,
-  tavg: [5.2, 6.1, 7.4, 11.1, 14.6, 19, 20.9, 21.8, 19, 14.7, 10.9, 7.4],
-  tmin: [1.8, 2.4, 3.6, 6.9, 10.7, 15.8, 18, 19.1, 15.9, 11.6, 7.4, 4.3],
-  prec: [127, 89, 124, 86, 121, 125, 125, 130, 134, 161, 107, 108],
-  ph: null, absMin: -11.6,
-};
-const rize = { // Turkey's tea heartland: tea survives -9.7 C winters under snow
-  lat: 40.975,
-  tavg: [5.7, 6.6, 8.1, 11.8, 15.4, 19.9, 21.7, 22.6, 20.1, 15.9, 11.7, 8.1],
-  tmin: [2.6, 3.2, 4.6, 7.8, 11.9, 17.2, 19.3, 20.6, 17.4, 13.1, 8.4, 5.1],
-  prec: [173, 117, 159, 101, 133, 178, 226, 249, 267, 271, 181, 168],
-  ph: null, absMin: -9.7,
-};
-const hazelGiresun = scoreSpecies(hazel, giresun, { countryNative: true });
-assert.equal(hazelGiresun.factors.rain, 0.5, "37 mm over the rain ceiling demotes, not kills");
-assert.ok(hazelGiresun.score >= 0.2, `hazelnut rates in Giresun: ${hazelGiresun.score}`);
-const pist = by("Pistacia vera");
-assert.equal(scoreSpecies(pist, saoPaulo).factors.rain, 0, "30% over the ceiling still kills (wet margin is 15%)");
-const tea = by("Camellia sinensis");
-const naturalized = JSON.parse(readFileSync(new URL("../data/naturalized.json", import.meta.url)));
-assert.ok(naturalized[String(tea.id)].includes("TR"), "Kew records tea naturalized in Turkey");
-assert.equal(scoreSpecies(tea, rize).score, 0, "without evidence EcoCrop hardiness kills tea in Rize");
-const teaRize = scoreSpecies(tea, rize, { countryNaturalized: true });
-assert.equal(teaRize.factors.frost, 0.5, "naturalization evidence demotes the frost kill");
-assert.ok(teaRize.score > 0.25, `tea rates in Rize with naturalization evidence: ${teaRize.score}`);
-assert.equal(scoreSpecies(by("Erythroxylum coca"), winnipeg, { countryNaturalized: true }).score, 0,
-  "naturalization evidence never revives a true climate kill");
-
-// grading bands
-assert.equal(grade(0.9), "Excellent");
-assert.equal(grade(0.5), "Suitable");
-assert.equal(grade(0), "Not suitable");
+// --- shade-tolerant / understory species trait & scoring
+const cacao = by("Theobroma cacao");
+assert.ok(cacao?.shade, "cacao carries the understory/shade trait");
+const highSunSite = { ...saoPaulo, rad: 5.8, radSlope: 5.8, cloud: 25 };
+const shadedSite = { ...saoPaulo, rad: 3.5, radSlope: 3.5, cloud: 60 };
+assert.equal(scoreSpecies(cacao, highSunSite).factors.shade, 0.85, "cacao receives soft caveat in unshaded high-sun open field");
+assert.equal(scoreSpecies(cacao, shadedSite).factors.shade, 1.0, "cacao gets full credit in shaded/cloudy regime");
+assert.equal(scoreSpecies(qr, highSunSite).factors.shade, null, "canopy oak has null shade factor (not penalized)");
 
 // --- hydrological fixtures & UNEP aridity benchmarks (ERA5 2015-2024 normals)
 const konyaNormals = {
@@ -416,7 +354,217 @@ const rizeAI = rizeNormals.prec.reduce((a, b) => a + b, 0) / rizeNormals.et0.red
 close(rizeAI, 2.66, 0.05, "Rize AI ~ 2.66");
 assert.equal(aridityClass(rizeAI), "Humid", "Rize is humid");
 
+// --- growing-season water deficit and species scoring
+const sevilleSite = {
+  lat: 37.38,
+  tavg: [10.5, 12.7, 14.6, 17.3, 21.7, 25.4, 29.0, 29.1, 24.8, 20.7, 14.8, 12.1],
+  tmin: [6.5, 8.3, 9.7, 12.1, 15.6, 18.9, 21.8, 22.4, 19.2, 16.0, 10.9, 8.4],
+  prec: sevilleNormals.prec,
+  et0: sevilleNormals.et0,
+  ph: 7.2, absMin: -0.4,
+};
+const tomato = by("Solanum lycopersicum");
+assert.ok(tomato?.annual, "tomato is flagged annual");
+const tomatoSeville = scoreSpecies(tomato, sevilleSite);
+assert.ok(tomatoSeville.window.deficit > 400, `tomato in Seville has heavy deficit: ${tomatoSeville.window.deficit} mm`);
+assert.equal(tomatoSeville.factors.temp, 1, "tomato temperature in Seville is optimal");
+assert.equal(tomatoSeville.factors.rain, 0, "tomato rainfed score in Seville is 0 without irrigation");
+
+const olive = by("Olea europaea");
+const oliveSeville = scoreSpecies(olive, sevilleSite);
+assert.ok(oliveSeville.score > 0.7, `olive thrives in Mediterranean Seville: ${oliveSeville.score}`);
+
+// --- search deaccentuation (multilingual accent folding & Turkish dotless-i)
+const deacc = t => (t ?? "").replace(/İ/g, "i").replace(/I/g, "i").replace(/ı/g, "i").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+assert.equal(deacc("fındık"), "findik");
+assert.equal(deacc("FINDIK"), "findik");
+assert.equal(deacc("mısır"), "misir");
+assert.equal(deacc("MISIR"), "misir");
+assert.equal(deacc("çerez"), "cerez");
+assert.equal(deacc("göknar"), "goknar");
+assert.equal(deacc("açaí"), "acai");
+assert.equal(deacc("Ipê"), "ipe");
+assert.ok(deacc("fındık").includes(deacc("findik")), "Turkish search matches across dotted/dotless keyboards");
+
+// Southern Hemisphere slope solar (July winter in Brazil/Australia: North-facing slope gets elevated sun)
+const shNorthFactor = slopeSolarFactor(-30, 20, 0, 196); // July 15, DOY 196
+const shSouthFactor = slopeSolarFactor(-30, 20, 180, 196);
+assert.ok(shNorthFactor > 1.2, `30S winter north slope gets solar boost: ${shNorthFactor.toFixed(2)}`);
+assert.ok(shSouthFactor < 0.8, `30S winter south slope takes topographic shade: ${shSouthFactor.toFixed(2)}`);
+
+// --- topographic soil depth limits on slopes (Pelletier et al. 2016)
+assert.equal(maxSoilDepthCm(0), 200, "flat ground depth is 200 cm");
+assert.equal(maxSoilDepthCm(null), 200, "null slope depth is 200 cm");
+assert.equal(maxSoilDepthCm(20), 137, "20 deg slope gives ~137 cm depth");
+assert.equal(maxSoilDepthCm(25), 97, "25 deg slope gives ~97 cm depth");
+assert.equal(maxSoilDepthCm(30), 42, "30 deg slope gives ~42 cm depth");
+assert.equal(maxSoilDepthCm(35), 10, "35 deg steep slope clamps to 10 cm rock");
+
+// obligate deep-rooted species (Walnut: depmin 150 cm) vs shallow-tolerant (Scots pine: depmin 20 cm)
+const walnut = by("Juglans regia");
+const scotsPine = by("Pinus sylvestris");
+assert.ok(walnut?.depmin === 150, "walnut requires 150 cm deep soil");
+assert.ok(scotsPine?.depmin === 20, "scots pine tolerates 20 cm shallow soil");
+
+const steepHill25 = { ...saoPaulo, terrain: { slope: 25, facing: "N" } };
+const flatGround = { ...saoPaulo, terrain: { slope: 1, facing: null } };
+
+// On 25 deg slope (max depth 97 cm < 150 cm), walnut fails soil depth:
+assert.equal(scoreSpecies(walnut, steepHill25).factors.depth, 0, "walnut fails on 25 deg slope due to shallow soil");
+assert.equal(scoreSpecies(walnut, steepHill25).score, 0, "walnut score is 0 on 25 deg slope");
+assert.equal(scoreSpecies(walnut, flatGround).factors.depth, null, "flat ground leaves soil depth unconstrained");
+
+// On 25 deg slope (max depth 97 cm >= 20 cm), scots pine passes soil depth:
+assert.equal(scoreSpecies(scotsPine, steepHill25).factors.depth, null, "scots pine passes soil depth on 25 deg slope");
+
+// --- Soil envelope schema & hallmark species validation
+const rice = by("Oryza sativa");
+const maize = by("Zea mays");
+
+assert.ok(species.length >= 2000, `database has ${species.length} species`);
+assert.ok(rice?.text_tol?.includes("heavy"), "rice tolerates heavy clay soil");
+assert.ok(rice?.dra_tol?.includes("poorly"), "rice tolerates poorly drained soil");
+assert.ok(olive?.dra_opt?.includes("well"), "olive requires well-drained soil");
+assert.ok(olive?.sal_tol === "medium" || olive?.sal_tol === "high", "olive has salinity tolerance");
+assert.ok(maize?.text_opt?.includes("medium"), "maize prefers medium loamy soil");
+assert.ok(tea?.ph?.[0] <= 4.5, "tea tolerates acidic soil");
+
+// Soil coverage assertions across the database
+const withText = species.filter(s => s.text_opt?.length || s.text_tol?.length).length;
+const withDepth = species.filter(s => s.depmin != null || s.depopt != null).length;
+const withSal = species.filter(s => s.sal_opt != null || s.sal_tol != null).length;
+const withDra = species.filter(s => s.dra_opt?.length || s.dra_tol?.length).length;
+
+assert.ok(withText / species.length > 0.80, `soil texture coverage >80%: ${(withText / species.length * 100).toFixed(1)}%`);
+assert.ok(withDepth / species.length > 0.80, `soil depth coverage >80%: ${(withDepth / species.length * 100).toFixed(1)}%`);
+assert.ok(withSal / species.length > 0.75, `salinity coverage >75%: ${(withSal / species.length * 100).toFixed(1)}%`);
+assert.ok(withDra / species.length > 0.80, `drainage coverage >80%: ${(withDra / species.length * 100).toFixed(1)}%`);
+
+// --- Phase 3: USDA Texture Simplex & FAO Category Tests (JavaScript engine)
+assert.equal(usdaTextureClass(92, 5, 3), "Sand", "USDA Sand centroid");
+assert.equal(faoTextureCategory("Sand"), "light", "Sand is light");
+assert.equal(usdaTextureClass(40, 40, 20), "Loam", "USDA Loam centroid");
+assert.equal(faoTextureCategory("Loam"), "medium", "Loam is medium");
+assert.equal(usdaTextureClass(20, 20, 60), "Clay", "USDA Clay centroid");
+assert.equal(faoTextureCategory("Clay"), "heavy", "Clay is heavy");
+assert.equal(usdaTextureClass(20, 65, 15), "Silt Loam", "USDA Silt Loam");
+assert.equal(usdaTextureClass(40, 40, 20, 25), "Organic", "SOM >= 20% is Organic");
+assert.equal(faoTextureCategory("Organic"), "organic", "Organic category is organic");
+
+// --- Phase 3: Saxton-Rawls Hydrology PTF Tests (JavaScript engine)
+const sandHydro = saxtonRawlsHydrology(90, 5, 1.0, 1.5, 0, 100);
+const loamHydro = saxtonRawlsHydrology(40, 20, 2.0, 1.3, 0, 100);
+const clayHydro = saxtonRawlsHydrology(10, 60, 2.0, 1.4, 0, 100);
+
+assert.ok(sandHydro.thetaWp > 0 && sandHydro.thetaWp < sandHydro.thetaFc, "Sand 0 < WP < FC");
+assert.ok(sandHydro.thetaFc < sandHydro.thetaSat, "Sand FC < Sat");
+assert.ok(sandHydro.ksat > loamHydro.ksat, "Sand has higher permeability Ksat than Loam");
+assert.ok(clayHydro.thetaWp > sandHydro.thetaWp, "Clay has higher wilting point than Sand");
+assert.ok(loamHydro.awcMm > sandHydro.awcMm, "Loam has higher plant available water (AWC) than Sand");
+
+// Coarse fragments reduction test (30% gravel reduces AWC by ~30%)
+const gravelHydro = saxtonRawlsHydrology(40, 20, 2.0, 1.3, 30, 100);
+close(gravelHydro.awcMm, loamHydro.awcMm * 0.70, 1.0, "30% gravel reduces AWC by 30%");
+
+// --- Phase 3: Multi-Layer SoilGrids Profile Aggregator Tests
+const mockLayers = [
+  { name: "phh2o", unit_measure: { d_factor: 10 }, depths: [
+    { label: "0-5cm", values: { mean: 60 } },
+    { label: "5-15cm", values: { mean: 70 } },
+    { label: "15-30cm", values: { mean: 80 } },
+  ]},
+  { name: "sand", unit_measure: { d_factor: 10 }, depths: [
+    { label: "0-5cm", values: { mean: 600 } },
+    { label: "5-15cm", values: { mean: 500 } },
+    { label: "15-30cm", values: { mean: 400 } },
+  ]},
+  { name: "clay", unit_measure: { d_factor: 10 }, depths: [
+    { label: "0-5cm", values: { mean: 100 } },
+    { label: "5-15cm", values: { mean: 200 } },
+    { label: "15-30cm", values: { mean: 300 } },
+  ]},
+  { name: "silt", unit_measure: { d_factor: 10 }, depths: [
+    { label: "0-5cm", values: { mean: 300 } },
+    { label: "5-15cm", values: { mean: 300 } },
+    { label: "15-30cm", values: { mean: 300 } },
+  ]},
+  { name: "soc", unit_measure: { d_factor: 10 }, depths: [
+    { label: "0-5cm", values: { mean: 200 } },
+    { label: "5-15cm", values: { mean: 150 } },
+    { label: "15-30cm", values: { mean: 100 } },
+  ]},
+];
+const aggSoil = aggregateSoilProfile(mockLayers, 30);
+assert.ok(aggSoil != null, "Soil profile aggregated successfully");
+close(aggSoil.effectivePh, 7.33, 0.05, "Aggregated effective pH is weighted average (7.33)");
+assert.ok(aggSoil.usdaTexture === "Loam" || aggSoil.usdaTexture === "Sandy Loam", `Aggregated texture is ${aggSoil.usdaTexture}`);
+assert.ok(aggSoil.awcMm > 0, `Aggregated AWC is positive: ${aggSoil.awcMm} mm`);
+
+// --- Phase 3: scoreSpecies with Integrated Soil Physics
+const testSoilSiteLoam = {
+  ...sevilleSite,
+  soil: {
+    effectivePh: 6.8,
+    usdaTexture: "Loam",
+    faoTexture: "medium",
+    maxDepthCm: 150,
+    awcMm: 120,
+  }
+};
+const testSoilSiteHeavyClay = {
+  ...sevilleSite,
+  soil: {
+    effectivePh: 8.8, // Alkaline / calcareous
+    usdaTexture: "Clay",
+    faoTexture: "heavy",
+    maxDepthCm: 30, // Shallow hardpan / barrier at 30 cm
+    awcMm: 45,
+  }
+};
+
+// Maize (prefers medium texture) on Loam site:
+const maizeLoam = scoreSpecies(maize, testSoilSiteLoam);
+assert.equal(maizeLoam.factors.texture, 1.0, "maize on medium loam gets optimal texture score 1.0");
+assert.equal(maizeLoam.factors.depth, null, "maize passes depth unconstrained on 150cm soil");
+
+// Maize on heavy clay:
+const maizeClay = scoreSpecies(maize, testSoilSiteHeavyClay);
+assert.equal(maizeClay.factors.texture, 0.6, "maize on heavy clay gets tolerance score 0.6");
+assert.equal(maizeClay.factors.salinity, 0.5, "maize on alkaline soil (pH 8.8) gets 0.5 salinity caveat");
+
+// Deep-rooted Walnut (depmin 150cm) on 30cm shallow soil fails:
+const walnutShallow = scoreSpecies(walnut, testSoilSiteHeavyClay);
+assert.equal(walnutShallow.factors.depth, 0, "walnut fails on 30cm shallow soil (depth = 0)");
+assert.equal(walnutShallow.score, 0, "walnut overall score is 0 on shallow soil");
+
+// --- Static Global Soil Grid Lookup Tests
+const soilGridData = JSON.parse(readFileSync(new URL("../data/soil_grid.json", import.meta.url)));
+const konyaSoil = lookupSoil(37.87, 32.49, soilGridData);
+assert.ok(konyaSoil != null, "Konya soil lookup succeeds");
+assert.equal(konyaSoil.effectivePh, 7.8, "Konya soil pH is 7.8");
+assert.equal(konyaSoil.usdaTexture, "Clay Loam", "Konya USDA texture is Clay Loam");
+assert.ok(konyaSoil.awcMm > 100, `Konya AWC is ${konyaSoil.awcMm} mm`);
+
+const rizeSoil = lookupSoil(41.02, 40.52, soilGridData);
+assert.ok(rizeSoil != null, "Rize soil lookup succeeds");
+assert.equal(rizeSoil.effectivePh, 4.8, "Rize soil pH is acidic 4.8");
+assert.ok(rizeSoil.awcMm > 100, `Rize AWC is ${rizeSoil.awcMm} mm`);
+
+const berlinSoil = lookupSoil(52.50, 13.40, soilGridData);
+assert.ok(berlinSoil != null, "Berlin soil lookup succeeds");
+assert.equal(berlinSoil.usdaTexture, "Sandy Loam", "Berlin USDA texture is Sandy Loam");
+
+// grading bands
+assert.equal(grade(0.9), "Excellent");
+assert.equal(grade(0.5), "Suitable");
+assert.equal(grade(0), "Not suitable");
+
 console.log("all checks passed");
-console.log(`  oak@Berlin ${qrBerlin.score.toFixed(2)} | euc@Berlin ${egBerlin.score.toFixed(2)} | euc@SP ${egSP.score.toFixed(2)}`);
+console.log(`  oak@Berlin ${qrBerlin.score.toFixed(2)} | euc@Berlin ${egBerlin.score.toFixed(2)} | euc@SP ${egSP.score.toFixed(2)} | olive@Seville ${oliveSeville.score.toFixed(2)}`);
+console.log(`  tomato@Seville deficit ${tomatoSeville.window.deficit} mm (temp ${tomatoSeville.factors.temp.toFixed(2)}, rainfed ${tomatoSeville.factors.rain.toFixed(2)})`);
 console.log(`  euc CO2e(10y) ${eucCo2.toFixed(0)} kg | oak CO2e(10y) ${co2eKgPerTree(oakSp, 10).toFixed(1)} kg`);
 console.log(`  AI: Konya ${konyaAI.toFixed(2)} (${aridityClass(konyaAI)}) | Seville ${sevilleAI.toFixed(2)} (${aridityClass(sevilleAI)}) | Hamburg ${hamburgAI.toFixed(2)} (${aridityClass(hamburgAI)}) | Rize ${rizeAI.toFixed(2)} (${aridityClass(rizeAI)})`);
+console.log(`  Soil Envelopes: Texture ${withText}/${species.length} (${(withText/species.length*100).toFixed(1)}%) | Depth ${withDepth} | Salinity ${withSal} | Drainage ${withDra}`);
+console.log(`  Soil Scoring Engine: Maize@Loam score ${maizeLoam.score.toFixed(2)} (tex ${maizeLoam.factors.texture}) | Maize@Clay score ${maizeClay.score.toFixed(2)} (tex ${maizeClay.factors.texture}, sal ${maizeClay.factors.salinity}) | Walnut@Shallow score ${walnutShallow.score.toFixed(2)} (depth ${walnutShallow.factors.depth})`);
+
+

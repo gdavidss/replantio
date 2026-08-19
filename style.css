@@ -167,7 +167,7 @@ html, body { margin: 0; height: 100%; background: #0a0d0b; color: var(--text); }
   font-size: 21px; font-weight: 500; letter-spacing: -.014em; line-height: 1.18;
   margin: 0 76px 0 0;   /* clears the delete + close buttons */
 }
-.loc-title .adm, .readout .adm { color: var(--faint); font-weight: 400; }
+.loc-title .adm { color: var(--faint); font-weight: 400; }
 .loc-geo {
   margin-top: 7px; font-family: var(--mono); font-size: 10.5px; font-weight: 400;
   color: var(--muted); font-variant-numeric: tabular-nums; letter-spacing: .005em;
@@ -215,17 +215,22 @@ html, body { margin: 0; height: 100%; background: #0a0d0b; color: var(--text); }
    the logical reading order and no label/value pair can ever be split by a wrap. */
 .readout {
   margin: var(--s5) 0 0;
-  display: grid; grid-template-rows: repeat(5, auto);
-  grid-auto-flow: column; grid-auto-columns: 1fr; column-gap: 26px;
+  display: grid; grid-template-rows: repeat(7, auto);
+  grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); column-gap: 20px;
 }
 .readout .rd {
-  display: flex; justify-content: space-between; align-items: baseline; gap: 10px;
+  display: flex; justify-content: space-between; align-items: baseline; gap: 8px;
   font-size: 11px; color: var(--faint); padding: 4.5px 0; border-top: 1px solid var(--line);
+  min-width: 0;
 }
-.readout .rd:nth-child(1), .readout .rd:nth-child(6) { border-top: 0; }
+.readout .rd:nth-child(1), .readout .rd:nth-child(8) { border-top: 0; }
+.readout .rd > span {
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0;
+}
 .readout b {
   font-family: var(--mono); font-size: 10.5px; font-weight: 400; color: var(--text);
-  font-variant-numeric: tabular-nums; white-space: nowrap;
+  font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: right;
+  min-width: 0;
 }
 
 /* ---------- criteria row (structure per SPEC.md, finish per SPEC-2) ---------- */
@@ -402,6 +407,7 @@ html, body { margin: 0; height: 100%; background: #0a0d0b; color: var(--text); }
 .nearby.otherreg { color: var(--amber); font-weight: 400; font-style: normal; } /* lives on the sci line */
 .nearby.mgnl { color: var(--amber); font-weight: 400; opacity: .85; } /* sub-suitable rows say so */
 .it.wet { color: var(--water); }
+.it.shade { color: var(--amber); }
 /* the acquisition column: the one thing on the row that converts intent to action */
 .sp-get { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; flex-shrink: 0; }
 .sp-get .spd { font-size: 10px; color: var(--faint); letter-spacing: .01em; }
@@ -552,8 +558,8 @@ html, body { margin: 0; height: 100%; background: #0a0d0b; color: var(--text); }
     border-radius: 18px 18px 0 0;
   }
   .p-head { padding: 14px var(--pad) 12px; }
-  .readout { grid-template-rows: repeat(9, auto); column-gap: 0; } /* single column: two columns clip at 390px */
-  .readout .rd:nth-child(6) { border-top: 1px solid var(--line); }
+  .readout { grid-template-rows: repeat(14, auto); column-gap: 0; } /* single column: two columns clip at 390px */
+  .readout .rd:first-child { border-top: 0; }
 
   /* map controls and the sim pill lift above the sheet when it is open */
   .leaflet-control-zoom { display: none; }  /* pinch zoom exists */
