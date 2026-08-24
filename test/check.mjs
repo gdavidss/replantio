@@ -391,6 +391,16 @@ assert.ok(teaRize.score > 0.25, `tea rates in Rize with naturalization evidence:
 assert.equal(scoreSpecies(by("Erythroxylum coca"), winnipeg, { countryNaturalized: true }).score, 0,
   "naturalization evidence never revives a true climate kill");
 
+// dual-stage guards: dormancy is not active growth, and annuals stay KTMPR-first
+const rhodiola = by("Rhodiola rosea");
+assert.ok(rhodiola?.ktmpr <= -40, "rhodiola is an arctic perennial");
+assert.equal(scoreSpecies(rhodiola, berlin).factors.frost, 1,
+  "dormant midwinter months never count as active-shoot frost (stage 2 is tavg>=5 only)");
+const barley = by("Hordeum vulgare");
+assert.ok(barley?.annual, "barley is an annual");
+assert.equal(scoreSpecies(barley, giresun).factors.frost, 1,
+  "annual window test stays KTMPR-first; barley is grown in Giresun");
+
 // grading bands
 assert.equal(grade(0.9), "Excellent");
 assert.equal(grade(0.5), "Suitable");

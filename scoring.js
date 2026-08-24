@@ -282,7 +282,9 @@ export function scoreSpecies(sp, site, ev = null) {
   if (sp.annual && G < 12) {
     // An annual crop lives inside its growing window and never meets the
     // winter: frost is the dismo per-window test on the window's own months.
-    const kt = sp.ktmp ?? sp.ktmpr ?? (sp.gclass?.startsWith("tropical") ? 0 : null);
+    // KTMPR-first, as everywhere else: ktmp-first double-counts tenderness
+    // against the +4 dismo margin and zeroed barley and ryegrass at Giresun.
+    const kt = sp.ktmpr ?? sp.ktmp ?? (sp.gclass?.startsWith("tropical") ? 0 : null);
     if (kt == null) {
       frost = null;
     } else {
@@ -308,10 +310,17 @@ export function scoreSpecies(sp, site, ev = null) {
       frost = null;
     }
 
-    // Stage 2: Active growing-season frost risk for succulent new growth (KTMP)
+    // Stage 2: Active growing-season frost risk for succulent new growth (KTMP).
+    // Only months in ACTIVE growth count (tavg >= 5 C, the same dormancy
+    // criterion Gt uses): the fit-chosen window can contain midwinter months
+    // for cool-adapted species, and a dormant month is not tender shoots
+    // (an arctic Rhodiola with KTMPR -50 must not be halved by a Berlin January).
     if (frost !== 0 && sp.ktmp != null) {
       let wmin = Infinity;
-      for (let k = 0; k < Gt; k++) wmin = Math.min(wmin, site.tmin[(best + k) % 12]);
+      for (let k = 0; k < Gt; k++) {
+        const m = (best + k) % 12;
+        if (site.tavg[m] >= 5) wmin = Math.min(wmin, site.tmin[m]);
+      }
       if (wmin < sp.ktmp) {
         // Late spring or early autumn frost threatens active vegetative shoots
         frost = Math.min(frost ?? 1, 0.5);
