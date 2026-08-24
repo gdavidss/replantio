@@ -561,12 +561,15 @@ async function analyze(pts) {
   // Kew-recorded naturalization is the same establishment evidence for
   // non-natives (tea in Turkey); frost demote only, never the invasive block
   const evNaturalized = sp => !L3_REGIONS[place?.cc] && !!place?.cc && (NATURALIZED[sp.id] ?? []).includes(place.cc);
-  const scored = SPECIES
+  // kept on current so user site adjustments (irrigation, measured pH) can
+  // re-run pure scoring without refetching anything
+  const rescore = () => SPECIES
     .map(sp => ({ sp, ...scoreSpecies(sp, site, { native: evNative(sp), countryNative: evCountry(sp), countryNaturalized: evNaturalized(sp) }) }))
     .sort((a, b) => (b.score - a.score) || (b.fit - a.fit));
+  const scored = rescore();
   step("ls-score");
 
-  current = { site, scored, pts, center: c, ha, filter: "all", habit: "tree", shown: 12,
+  current = { site, scored, rescore, pts, center: c, ha, filter: "all", habit: "tree", shown: 12,
     cc: place?.cc ?? null, state: place?.state ?? "", city: place?.city ?? "", uf: place?.uf ?? "",
     // native-first by default wherever we know the country AND the ranges loaded
     nativeOnly: !!place?.cc && Object.keys(NATIVES).length > 0, critOpen: false };
@@ -829,8 +832,12 @@ function renderResults() {
   const whyBlock = `
     <div class="section-h">${tr("Site climate &middot; ERA5 2015&ndash;2024")}</div>
     <div class="site-fig">${climateSvg(site)}</div>
+    <div class="site-adjust">
+      <label><input type="checkbox" data-ov-irr${site.irrigated ? " checked" : ""}> ${tr("irrigated")}</label>
+      <label>${tr("measured pH")} <input type="number" data-ov-ph min="3" max="10" step="0.1" value="${site.phUser ?? ""}" placeholder="${site.ph != null ? fmt(site.ph, 1) : "–"}"></label>
+    </div>
     <div class="readout">
-      ${rd(tr("soil pH"), site.ph != null ? fmt(site.ph, 1) : tr("no data"))}
+      ${rd(tr("soil pH"), site.ph != null ? `${fmt(site.ph, 1)}${site.phUser != null ? ` <span class="chk">(${tr("measured")})</span>` : ""}` : tr("no data"))}
       ${rd(tr("elevation"), `${fmt(site.elevation)} m`)}
       ${rd(tr("daylength"), `${fmt(Math.min(...dls), 1)}&ndash;${fmt(Math.max(...dls), 1)} h`)}
       ${rd(tr("record low"), site.absMin != null ? `${fmt(site.absMin)} °C` : tr("n/a"))}
@@ -940,6 +947,25 @@ function speciesRow(s, i) {
     <div class="sp-body" hidden></div>
   </div>`;
 }
+
+// site adjustments: mutate the site, re-run pure scoring, re-render. The
+// SoilGrids value is kept in phGrid so clearing the field restores it.
+content.addEventListener("change", e => {
+  const site = current?.site;
+  if (!site) return;
+  if (e.target.matches("[data-ov-irr]")) {
+    site.irrigated = e.target.checked || undefined;
+  } else if (e.target.matches("[data-ov-ph]")) {
+    const v = parseFloat(e.target.value);
+    if (site.phGrid === undefined) site.phGrid = site.ph;
+    site.phUser = Number.isFinite(v) && v >= 3 && v <= 10 ? Math.round(v * 10) / 10 : null;
+    site.ph = site.phUser ?? site.phGrid;
+    if (site.phUser == null) delete site.phUser;
+  } else return;
+  current.scored = current.rescore();
+  renderResults(); loadRowPhotos();
+  track("site_override", { irrigated: !!site.irrigated, ph: site.phUser ?? undefined });
+});
 
 let qTrack;
 content.addEventListener("input", e => {
@@ -1216,7 +1242,8 @@ function speciesDetail(id) {
     if (s.factors.photo != null && s.factors.photo < 1) notes.push(tr("Photoperiod outside this species' range: 0.5 penalty applied."));
     if (s.factors.drain === 0) notes.push(tfmt("This is a wetland species (needs saturated soil or standing water), and this point sits on a {n}° slope.", { n: fmt(current.site.terrain?.slope ?? 0) }));
     if (s.factors.depth != null && s.factors.depth < 1) notes.push(tfmt("Requires at least {req} cm soil depth (EcoCrop), but this {slope}° slope supports only ~{avail} cm equilibrium soil.", { req: fmt(sp.depmin), slope: fmt(current.site.terrain?.slope ?? 0), avail: fmt(maxSoilDepthCm(current.site.terrain?.slope ?? 0)) }));
-    if (s.factors.rain < 0.2 && s.factors.temp >= 0.5) notes.push(tr("Rainfall is the limiting factor here. The model scores rainfed growing only; irrigation changes this picture entirely."));
+    if (current.site.irrigated) notes.push(tr("Scored as irrigated: water counts as available up to this species' optimum. Excess rain still applies."));
+    else if (s.factors.rain < 0.2 && s.factors.temp >= 0.5) notes.push(tr("Rainfall is the limiting factor here. The model scores rainfed growing only; irrigation changes this picture entirely."));
     // wet-margin demote: rain 0.5 with the scored total above the ceiling can
     // only come from the margin (the trapezoid is 0 past RMAX)
     const rTot = (sp.tree && (sp.ktmpr ?? 99) <= -10) || s.window.months === 12 ? current.site.annualRain : wr;

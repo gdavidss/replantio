@@ -244,9 +244,16 @@ export function scoreSpecies(sp, site, ev = null) {
     if (G === 12) Gt = Math.min(12, Math.max(3, warm));
   }
 
+  // User-declared irrigation waives the DRY side only: water on tap lifts the
+  // effective supply to at least the species' optimal minimum, never above
+  // what actually falls (waterlogging is not fixed by a hose). Field-requested
+  // three times from the same Malatya orchard whose apricots our rainfed
+  // scoring kept at rain 0 (issue #5 territory).
+  const eff = site.irrigated ? (r => Math.max(r, sp.rain[1])) : (r => r);
+
   let temp = 0, rain = 0, best = 0, bestScore = -1;
   if (dormantTree) { // annual rain (slope-drainage relieved), warm-season temperature, decoupled
-    rain = scorePerennialRain(site.prec.reduce((a, b) => a + b, 0), sp.rain, site.terrain?.slope);
+    rain = scorePerennialRain(eff(site.prec.reduce((a, b) => a + b, 0)), sp.rain, site.terrain?.slope);
     let bestMean = -Infinity;
     for (let s = 0; s < 12; s++) {
       let tsum = 0;
@@ -266,7 +273,7 @@ export function scoreSpecies(sp, site, ev = null) {
         rtot += site.prec[m];
       }
       const t = trap(tsum / G, ...sp.temp);
-      const r = trap(rtot, ...sp.rain);
+      const r = trap(eff(rtot), ...sp.rain);
       const m = Math.min(t, r);
       // ties broken by temperature so an all-zero-rain site still reports the
       // real growing window (else annuals get frost-tested on january)
@@ -421,11 +428,11 @@ export function scoreSpecies(sp, site, ev = null) {
   const tri = (x, a, b, c, d) => trap(x, a, (b + c) / 2, (b + c) / 2, d);
   let tsum = 0;
   for (let k = 0; k < Gt; k++) tsum += site.tavg[(best + k) % 12];
-  const rainVal = dormantTree ? site.prec.reduce((a, b) => a + b, 0) : (() => {
+  const rainVal = eff(dormantTree ? site.prec.reduce((a, b) => a + b, 0) : (() => {
     let r = 0;
     for (let k = 0; k < G; k++) r += site.prec[(best + k) % 12];
     return r;
-  })();
+  })());
   const fits = [tri(tsum / Gt, ...sp.temp), tri(rainVal, ...sp.rain)];
   if (sp.ph && site.ph != null) fits.push(tri(site.ph, ...sp.ph));
   const fit = fits.reduce((a, b) => a + b, 0) / fits.length;

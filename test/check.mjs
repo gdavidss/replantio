@@ -430,6 +430,16 @@ assert.ok(barley?.annual, "barley is an annual");
 assert.equal(scoreSpecies(barley, giresun).factors.frost, 1,
   "annual window test stays KTMPR-first; barley is grown in Giresun");
 
+// user-declared irrigation waives the dry side only (Malatya field request):
+// water lifts to the species' optimal minimum, never above what falls
+const apricot = by("Prunus armeniaca");
+assert.equal(scoreSpecies(apricot, malatya, { countryNative: true }).factors.rain, 0,
+  "rainfed Malatya apricot stays rain-zero");
+assert.equal(scoreSpecies(apricot, { ...malatya, irrigated: true }, { countryNative: true }).factors.rain, 1,
+  "irrigation lifts apricot to its rain optimum in Malatya");
+assert.equal(scoreSpecies(hazel, { ...giresun, irrigated: true }, { countryNative: true }).factors.rain, 0.5,
+  "irrigation never fixes waterlogging: Giresun stays at the wet-margin demote");
+
 // grading bands
 assert.equal(grade(0.9), "Excellent");
 assert.equal(grade(0.5), "Suitable");

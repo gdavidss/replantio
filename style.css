@@ -713,3 +713,16 @@ html, body { margin: 0; height: 100%; background: #0a0d0b; color: var(--text); }
   #radarnav { bottom: 12px; }
   body.panel-open #radarnav { bottom: calc(62vh + 10px); }
 }
+
+/* site adjustments: two quiet inline controls inside "Why these plants?" */
+.site-adjust {
+  display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+  margin: 2px 0 10px; font-size: 12px; color: var(--muted);
+}
+.site-adjust label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.site-adjust input[type="checkbox"] { accent-color: var(--accent); }
+.site-adjust input[type="number"] {
+  width: 58px; padding: 3px 6px; font: inherit; color: var(--text);
+  background: rgba(255, 255, 255, 0.05); border: 1px solid var(--line-2); border-radius: 6px;
+}
+.site-adjust input[type="number"]:focus { outline: none; border-color: var(--accent); }
