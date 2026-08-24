@@ -195,7 +195,31 @@ function dayClasses(d) {
   return c;
 }
 
-// site: {tavg[12], tmin[12], prec[12], ph|null, lat}
+// Hillslope drainage relief on the WET side of a rain envelope: sloped ground
+// sheds excess water that would waterlog a flat site, so the upper tolerance
+// band (RMAX - ROPMX) widens with slope. This is a calibration heuristic in
+// the spirit of FAO land-evaluation drainage classes (Soils Bulletin 52),
+// not derived physics; the constants are anchored on a field case (Black Sea
+// hazelnut farmed on 30-45 degree slopes, Ordu 0.43 -> 0.47). The dry side is
+// never touched: running out of water is physically real. Applies only where
+// annual-rain scoring exists (dormant trees; see scoreSpecies).
+export const SLOPE_FLAT_DEG = 2.0;         // below this, drainage relief is nil
+export const SLOPE_MAX_DEG = 16.0;         // relief plateaus here (~28% gradient)
+export const MAX_SLOPE_DRAIN_FACTOR = 1.0; // band widens by up to +100%
+
+export function scorePerennialRain(annualRain, [rmin, ropmn, ropmx, rmax], slope) {
+  if (annualRain <= ropmx) {
+    return trap(annualRain, rmin, ropmn, ropmx, rmax);
+  }
+  const deg = slope ?? 0;
+  const slopeProgress = deg > SLOPE_FLAT_DEG
+    ? Math.min(1.0, (deg - SLOPE_FLAT_DEG) / (SLOPE_MAX_DEG - SLOPE_FLAT_DEG))
+    : 0;
+  const effectiveRmax = ropmx + (rmax - ropmx) * (1 + slopeProgress * MAX_SLOPE_DRAIN_FACTOR);
+  return trap(annualRain, rmin, ropmn, ropmx, effectiveRmax);
+}
+
+// site: {tavg[12], tmin[12], prec[12], ph|null, lat, terrain}
 // ev (optional): { native: true } = the species' own mapped/regional native
 // range covers this exact site, which is evidence the regime is survivable
 // even where EcoCrop's crop-oriented fields say otherwise.
@@ -203,14 +227,15 @@ export function scoreSpecies(sp, site, ev = null) {
   const [gmin, gmax] = sp.cycle ?? [null, null];
   const G = gmin == null && gmax == null ? 12 :
     Math.max(1, Math.min(12, Math.round(((gmin ?? gmax) + (gmax ?? gmin)) / 60)));
-  // A TREE declaring deep dormant hardiness (KTMPR <= -10) does not grow
-  // through its winter: its TEMPERATURE is scored on the growing season
-  // (months averaging >= 5 C, capped by its own cycle), otherwise a
-  // 12-month mean blends saskatoon's Winnipeg summers with -20 C januaries
-  // and kills it in the town it was named after. Its RAIN is the full year
-  // (temperate trees live on stored/annual water, and sugar maple's 6-month
-  // envelope would starve in Toronto on window rain alone). Herbaceous
-  // hardy crops keep the classic cycle-window scoring.
+  // A perennial lives on stored/annual water. A dormant/deciduous tree (KTMPR <= -10)
+  // does not grow through its winter: its TEMPERATURE is scored on the growing season
+  // (months averaging >= 5 C, capped by its cycle), otherwise a 12-month mean blends
+  // saskatoon's Winnipeg summers with -20 C januaries and kills it in the town it was
+  // named after. Its RAIN is the full year, wet-side-relieved by hillslope
+  // drainage. Everything else keeps the classic cycle-window scoring: EcoCrop
+  // envelopes for short-cycle species are cycle-scoped, and scoring all
+  // perennials on annual totals is a unit mismatch (tried in #10's first
+  // draft; it hard-killed 109 grassland species at the Rize climate alone).
   const dormantTree = sp.tree && (sp.ktmpr ?? 99) <= -10;
   let Gt = G;
   if (dormantTree) {
@@ -220,8 +245,8 @@ export function scoreSpecies(sp, site, ev = null) {
   }
 
   let temp = 0, rain = 0, best = 0, bestScore = -1;
-  if (dormantTree) { // annual rain, warm-season temperature, decoupled
-    rain = trap(site.prec.reduce((a, b) => a + b, 0), ...sp.rain);
+  if (dormantTree) { // annual rain (slope-drainage relieved), warm-season temperature, decoupled
+    rain = scorePerennialRain(site.prec.reduce((a, b) => a + b, 0), sp.rain, site.terrain?.slope);
     let bestMean = -Infinity;
     for (let s = 0; s < 12; s++) {
       let tsum = 0;
@@ -256,8 +281,11 @@ export function scoreSpecies(sp, site, ev = null) {
   // world's hazelnut capital, on 37 mm over the ceiling; Turkish issue #5).
   // Within WET_MARGIN above RMAX the kill demotes to half. Drought-side
   // kills stay untouched: running out of water is physically real.
+  // rain < 0.5 (not === 0): the slope-drainage trap can land between 0 and
+  // 0.5 inside the margin band, and a sloped site must never score below the
+  // flat site's 0.5 demote (monotonicity; caught in #10 review at Giresun).
   const WET_MARGIN = 1.15;
-  if (rain === 0) {
+  if (rain < 0.5) {
     let rtot = 0;
     if (dormantTree || G === 12) rtot = site.prec.reduce((a, b) => a + b, 0);
     else for (let k = 0; k < G; k++) rtot += site.prec[(best + k) % 12];
@@ -391,9 +419,14 @@ export function scoreSpecies(sp, site, ev = null) {
   // also measure how close the site sits to each envelope's center
   // (triangular membership peaking at the optimal-range midpoint).
   const tri = (x, a, b, c, d) => trap(x, a, (b + c) / 2, (b + c) / 2, d);
-  let tsum = 0, rtot = 0;
-  for (let k = 0; k < G; k++) { const m = (best + k) % 12; tsum += site.tavg[m]; rtot += site.prec[m]; }
-  const fits = [tri(tsum / G, ...sp.temp), tri(rtot, ...sp.rain)];
+  let tsum = 0;
+  for (let k = 0; k < Gt; k++) tsum += site.tavg[(best + k) % 12];
+  const rainVal = dormantTree ? site.prec.reduce((a, b) => a + b, 0) : (() => {
+    let r = 0;
+    for (let k = 0; k < G; k++) r += site.prec[(best + k) % 12];
+    return r;
+  })();
+  const fits = [tri(tsum / Gt, ...sp.temp), tri(rainVal, ...sp.rain)];
   if (sp.ph && site.ph != null) fits.push(tri(site.ph, ...sp.ph));
   const fit = fits.reduce((a, b) => a + b, 0) / fits.length;
 

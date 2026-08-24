@@ -83,6 +83,13 @@ Documented adaptations for perennials (`scoring.js`):
   >= 5 C, capped by its cycle) and on the full year for rainfall. Without
   this, a 12-month mean kills saskatoon in Winnipeg and window-rain starves
   sugar maple in Toronto.
+- **Hillslope drainage relief (wet side only)**: for dormant trees scored on
+  annual rain, sloped ground sheds excess water that would waterlog a flat
+  site, so the upper tolerance band (RMAX - ROPMX) widens with slope, up to
+  +100% at >= 16 degrees. A calibration heuristic in the spirit of FAO
+  land-evaluation drainage classes (Soils Bulletin 52), anchored on Black Sea
+  hazelnut farmed on 30-45 degree slopes; a sloped site never scores below
+  the flat-site wet-margin demote, and the dry side is never touched.
 - **Native evidence beats crop fields**: where a species' own mapped range
   (Little/USGS polygons) or regional WCVP range covers the analysed point,
   the annual-regime gate is waived and a frost kill demotes to a half

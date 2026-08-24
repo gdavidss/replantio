@@ -1,7 +1,7 @@
 // Self-check for the scoring and growth engines. Run: node test/check.mjs
 import assert from "node:assert";
 import { readFileSync } from "node:fs";
-import { trap, daylength, slopeSolarFactor, monthlySlopeSolarFactors, monthlyFlatInsolation, maxSoilDepthCm, scoreSpecies, aggregateClimate, grade, aridityClass } from "../scoring.js";
+import { trap, daylength, slopeSolarFactor, monthlySlopeSolarFactors, monthlyFlatInsolation, maxSoilDepthCm, scorePerennialRain, SLOPE_FLAT_DEG, SLOPE_MAX_DEG, MAX_SLOPE_DRAIN_FACTOR, scoreSpecies, aggregateClimate, grade, aridityClass } from "../scoring.js";
 import { CLASSES, height, dbhCm, co2eKgPerTree, crownDiameterM, crownDisplayM, standDisplay, maturityYears } from "../growth.js";
 
 const species = JSON.parse(readFileSync(new URL("../data/species.json", import.meta.url)));
@@ -359,6 +359,31 @@ const lateSpringFreeze = {
 };
 assert.equal(scoreSpecies(apple, lateSpringFreeze).factors.frost, 0.5, "apple demoted to 0.5 on late spring frost (KTMP -2)");
 
+// --- hillslope drainage relief on the wet side (dormant-tree annual rain only)
+const testEnv = [500, 800, 1400, 1800]; // rmin, ropmn, ropmx, rmax
+assert.equal(scorePerennialRain(1000, testEnv, 0), 1.0, "optimal rain is 1.0 regardless of slope");
+assert.equal(scorePerennialRain(1600, testEnv, 0), 0.5, "flat ground saturates towards rmax (1800)");
+assert.equal(scorePerennialRain(1800, testEnv, 0), 0.0, "flat ground hits rmax at 1800");
+// On 9 deg slope (halfway between 2 and 16 deg): effectiveRmax becomes 1400 + 400 * 1.5 = 2000
+close(scorePerennialRain(1800, testEnv, 9), 0.333, 0.05, "9 deg slope drains excess rain (effective rmax = 2000)");
+// On >=16 deg slope (full drainage benefit): effectiveRmax becomes 1400 + 400 * 2.0 = 2200
+assert.equal(scorePerennialRain(1800, testEnv, 16), 0.5, "16 deg slope expands upper band by 100% (effective rmax = 2200)");
+assert.equal(scorePerennialRain(2200, testEnv, 25), 0.0, "steep slope hits expanded rmax at 2200");
+// monotonicity guard (#10 review): inside the wet-margin band the flat-site 0.5
+// demote is a floor, so slope never scores BELOW flat; a dormant tree probe
+// with KTMPR -12 exercises the full scoreSpecies path at both slopes
+{
+  const probe = { sci: "probe", temp: [5, 10, 24, 35], rain: testEnv, ph: null,
+    ktmpr: -12, ktmp: -3, photo: null, cycle: [150, 210], gclass: "temperate_medium",
+    wood: "broadleaf", tree: true };
+  const wetSite = { lat: 41, tavg: [6, 7, 9, 12, 16, 20, 23, 24, 21, 16, 12, 8],
+    tmin: [3, 4, 5, 8, 12, 17, 20, 21, 18, 13, 9, 6],
+    prec: Array(12).fill(1850 / 12), ph: null, absMin: -5 };
+  for (const s of [0, 4, 9, 16, 25]) {
+    const r = scoreSpecies(probe, { ...wetSite, terrain: { slope: s } }).factors.rain;
+    assert.ok(r >= 0.5, `wet-margin floor holds at slope ${s}: ${r}`);
+  }
+}
 // flagship crops in their home regions (Turkish issue #5, 2026-08): the wet
 // side of an EcoCrop rain envelope proxies disease/drainage, not survival,
 // and Kew-recorded naturalization is establishment evidence for non-natives
@@ -379,6 +404,10 @@ const rize = { // Turkey's tea heartland: tea survives -9.7 C winters under snow
 const hazelGiresun = scoreSpecies(hazel, giresun, { countryNative: true });
 assert.equal(hazelGiresun.factors.rain, 0.5, "37 mm over the rain ceiling demotes, not kills");
 assert.ok(hazelGiresun.score >= 0.2, `hazelnut rates in Giresun: ${hazelGiresun.score}`);
+// Black Sea hazelnut is farmed on 30-45 degree slopes: terrain must never
+// score below the flat site (#10 review caught a 0.250 -> 0.219 regression)
+assert.ok(scoreSpecies(hazel, { ...giresun, terrain: { slope: 25 } }, { countryNative: true }).score >= hazelGiresun.score,
+  "sloped Giresun hazelnut scores at least the flat site");
 const pist = by("Pistacia vera");
 assert.equal(scoreSpecies(pist, saoPaulo).factors.rain, 0, "30% over the ceiling still kills (wet margin is 15%)");
 const tea = by("Camellia sinensis");
