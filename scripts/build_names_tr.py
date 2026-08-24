@@ -72,6 +72,7 @@ CURATED_TR = {
     "Ailanthus altissima": "kokarağaç|cennet ağacı",
     "Betula pubescens": "tüylü huş",
     "Carpinus betulus": "adi gürgen|gürgen",
+    "Castanea crenata": "japon kestanesi",
     "Castanea dentata": "amerikan kestanesi",
     "Castanea mollissima": "çin kestanesi",
     "Castanea sativa": "anadolu kestanesi|tatlı kestane|kestane",
@@ -80,7 +81,7 @@ CURATED_TR = {
     "Fagus sylvatica": "avrupa kayını|adi kayın",
     "Fagus sylvatica ssp. sylvatica": "avrupa kayını|adi kayın",
     "Fraxinus excelsior": "adi dişbudak|dişbudak",
-    "Gleditsia triacanthos": "üç dikenli gladiçya|gladiçya|yabani keçiboynuzu",
+    "Gleditsia triacanthos": "üç dikenli gladiçya|gladiçya|yabani keçiboynuzu|şeytan dikeni",
     "Liquidambar styraciflua": "amerikan sığla ağacı",
     "Populus deltoides": "kara kavak (kanada)|kanada kavağı",
     "Populus euphratica": "fırat kavağı",
@@ -109,7 +110,7 @@ CURATED_TR = {
     "Citrus aurantium": "turunç",
     "Citrus aurantium ssp. bergamia": "bergamot",
     "Citrus deliciosa": "akdeniz mandalinası|mandalina",
-    "Citrus grandis": "ağaç kavunu|şadok|pomelo",
+    "Citrus grandis": "pomelo|şadok",
     "Citrus japonica": "kamkat|kumkuat",
     "Citrus latifolia": "tahiti limonu|fars misket limonu",
     "Citrus limon": "limon",
@@ -121,7 +122,7 @@ CURATED_TR = {
     "Citrus unshiu": "satsuma mandalinası|rize mandalinası",
     "Corylus avellana": "fındık|adi fındık",
     "Corylus colurna var. colurna": "türk fındığı|ağaç fındığı",
-    "Corylus maxima": "tombul fındık|lambert fındığı",
+    "Corylus maxima": "lambert fındığı",
     "Cydonia oblonga": "ayva",
     "Diospyros kaki": "trabzon hurması|cennet elması",
     "Diospyros nigra": "kara sapot|çikolata meyvesi",
@@ -165,11 +166,16 @@ CURATED_TR = {
     "Persea americana ssp. west indian": "batı hint avokadosu|avokado",
     "Phoenix dactylifera": "hurma|hurma ağacı",
     "Physalis peruviana": "altın çilek|güveyfeneri",
+    "Pistacia lentiscus": "sakız ağacı",
     "Pistacia vera": "antep fıstığı|fıstık",
+    "Platanus orientalis": "doğu çınarı|çınar",
+    "Salix babylonica var. sacramenta": "salkımsöğüt",
+    "Sorbus domestica": "üvez|bahçe üvezi",
+    "Tilia cordata": "ıhlamur|küçük yapraklı ıhlamur",
     "Pouteria sapota": "mamey sapote",
     "Prunus amygdalus": "badem",
     "Prunus armeniaca": "kayısı",
-    "Prunus avium": "kiraz|tatlı kiraz",
+    "Prunus avium": "kiraz|tatlı kiraz|yabani kiraz",
     "Prunus cerasus": "vişne",
     "Prunus domestica": "erik|adi erik",
     "Prunus persica": "şeftali",
@@ -198,7 +204,7 @@ CURATED_TR = {
 
     # --- Tarım Bitkileri, Tahıllar, Baklagiller ve Sebzeler ---
     "Abelmoschus esculentus": "bamya",
-    "Abelmoschus manihot": "aibou|manihot bamyası",
+    "Abelmoschus manihot": "aibou",
     "Allium ampeloprasum": "pırasa|yabani pırasa",
     "Allium cepa": "soğan|kuru soğan",
     "Allium cepa var. aggregatum": "arpacık soğanı|şalot soğanı",
@@ -240,7 +246,7 @@ CURATED_TR = {
     "Brassica rapa Pak Choi": "pakçoy|çin lahanası",
     "Brassica rapa var. rapifera": "şalgam turbu|şalgam",
     "Cajanus cajan": "güvercin bezelyesi",
-    "Cannabis sativa ssp. indica": "hint keneviri|kenevir",
+    "Cannabis sativa ssp. indica": "hint keneviri|kenevir|kendir",
     "Capsicum annuum": "biber|sivri biber|kapya",
     "Capsicum baccatum var. pendulum": "çile biberi",
     "Capsicum frutescens": "çin biberi|tabasko biberi|acı süs biberi",
@@ -285,7 +291,7 @@ CURATED_TR = {
     "Lupinus albus": "termiye|acı bakla|ak acıbakla",
     "Lupinus angustifolius": "mavi acıbakla",
     "Lupinus luteus": "sarı acıbakla",
-    "Manihot esculenta": "manyak|kassava",
+    "Manihot esculenta": "manyok|kasava",
     "Marrubium vulgare": "bozotu|it sineği otu",
     "Medicago arabica": "arap yoncası",
     "Medicago falcata": "sarı çiçekli yonca",
@@ -473,7 +479,6 @@ GENUS_NAME = {
     "Amaranthus": "horozibiği",
     "Anacardium": "kaju",
     "Ananas": "ananas",
-    "Andropogon": "sakalsızot",
     "Annona": "anona",
     "Apium": "kereviz",
     "Arachis": "yer fıstığı",
@@ -488,7 +493,6 @@ GENUS_NAME = {
     "Bambusa": "bambu",
     "Beta": "pancar",
     "Betula": "huş",
-    "Brachiaria": "çim darısı",
     "Brassica": "lahana",
     "Bromus": "brom",
     "Cajanus": "güvercin bezelyesi",
@@ -507,7 +511,6 @@ GENUS_NAME = {
     "Cedrus": "sedir",
     "Celtis": "çitlembik",
     "Cenchrus": "pıtraklı darı",
-    "Centrosema": "kelebek fasulyesi",
     "Ceratonia": "keçiboynuzu",
     "Cercis": "erguvan",
     "Chenopodium": "kazayağı",
@@ -539,19 +542,14 @@ GENUS_NAME = {
     "Daucus": "havuç",
     "Dendrocalamus": "dev bambu",
     "Desmodium": "yapışkanotu",
-    "Digitaria": "çim darısı",
-    "Dioscorea": "yams",
-    "Diospyros": "hurma",
     "Echinochloa": "darıcan",
     "Elaeagnus": "iğde",
     "Elaeis": "yağ palmiyesi",
     "Eleusine": "korakan",
-    "Eragrostis": "aşk otu",
     "Eriobotrya": "malta eriği",
     "Eruca": "roka",
     "Erythrina": "mercan ağacı",
     "Eucalyptus": "okaliptüs",
-    "Eugenia": "surinam kirazı",
     "Fagopyrum": "karabuğday",
     "Fagus": "kayın",
     "Festuca": "yumak",
@@ -567,7 +565,6 @@ GENUS_NAME = {
     "Grevillea": "grevilya",
     "Helianthus": "ayçiçeği",
     "Hevea": "kauçuk ağacı",
-    "Hibiscus": "ebegümeci",
     "Hordeum": "arpa",
     "Humulus": "şerbetçiotu",
     "Ilex": "çobanpüskülü",
@@ -583,7 +580,6 @@ GENUS_NAME = {
     "Lathyrus": "mürdümük",
     "Laurus": "defne",
     "Lavandula": "lavanta",
-    "Leucaena": "kurşun ağacı",
     "Linum": "keten",
     "Liquidambar": "sığla",
     "Litchi": "liçi",
@@ -595,7 +591,6 @@ GENUS_NAME = {
     "Macroptilium": "siratro",
     "Malus": "elma",
     "Mangifera": "mango",
-    "Manihot": "manyak",
     "Manilkara": "sapodilla",
     "Medicago": "yonca",
     "Melaleuca": "çay ağacı",
@@ -630,7 +625,6 @@ GENUS_NAME = {
     "Physalis": "güveyfeneri",
     "Picea": "ladin",
     "Pinus": "çam",
-    "Piper": "biber",
     "Pistacia": "fıstık",
     "Pisum": "bezelye",
     "Plantago": "karnıyarık otu",
@@ -639,7 +633,6 @@ GENUS_NAME = {
     "Populus": "kavak",
     "Portulaca": "semizotu",
     "Prosopis": "meskit",
-    "Prunus": "erik",
     "Pseudotsuga": "duglas",
     "Psidium": "guava",
     "Pueraria": "kudzu",
@@ -664,12 +657,10 @@ GENUS_NAME = {
     "Sesbania": "sesbanya",
     "Setaria": "cin darısı",
     "Sinapis": "hardal",
-    "Solanum": "itüzümü",
     "Sorghum": "sorgum",
     "Spartium": "katırtırnağı",
     "Spinacia": "ıspanak",
     "Stipa": "kavotu",
-    "Stylosanthes": "kalemotu",
     "Swietenia": "maun",
     "Syzygium": "karanfil",
     "Tamarindus": "demirhindi",
@@ -677,7 +668,6 @@ GENUS_NAME = {
     "Taxodium": "bataklık servisi",
     "Taxus": "porsuk",
     "Tectona": "tik",
-    "Terminalia": "badem ağacı",
     "Theobroma": "kakao",
     "Thuja": "mazı",
     "Thymus": "kekik",
@@ -686,7 +676,6 @@ GENUS_NAME = {
     "Triticum": "buğday",
     "Ulmus": "karaağaç",
     "Urena": "malva",
-    "Urochloa": "çim darısı",
     "Vaccinium": "yaban mersini",
     "Vanilla": "vanilya",
     "Viburnum": "kartopu",
@@ -720,6 +709,20 @@ def build():
     out = {}
     counts = collections.Counter()
 
+    # The store matcher (scripts/match_products.py) only uses names that
+    # resolve to exactly ONE species. A genus fallback that spells the same
+    # as a curated tier-1 name of a DIFFERENT taxon would de-uniquify it and
+    # silently drop verified Turkish product matches (zeytin, ceviz, incir...).
+    # norm mirrors the matcher's: ascii-fold, lowercase, alnum+space only.
+    def norm(s):
+        import unicodedata
+        s = unicodedata.normalize("NFD", s or "").encode("ascii", "ignore").decode().lower()
+        return re.sub(r"[^a-z0-9 ]+", " ", s).strip()
+    curated_names = {}
+    for sci, names in CURATED_TR.items():
+        for nm in names.split("|"):
+            curated_names.setdefault(norm(clean_name(nm)), set()).add(sci)
+
     for sp in species_list:
         sid = str(sp["id"])
         sci = sp["sci"].strip()
@@ -736,11 +739,15 @@ def build():
                 counts["curated"] += 1
                 continue
 
-        # Tier 2: Genus fallback
+        # Tier 2: Genus fallback, guarded against de-uniquifying curated names
         if genus in GENUS_NAME:
-            out[sid] = {"nome": GENUS_NAME[genus]}
-            counts["genus"] += 1
-            continue
+            owners = curated_names.get(norm(GENUS_NAME[genus]), set())
+            if owners and owners != {sci}:
+                counts["genus_guarded"] += 1  # falls through to Latin (tier 3)
+            else:
+                out[sid] = {"nome": GENUS_NAME[genus]}
+                counts["genus"] += 1
+                continue
 
         # Tier 3: Deliberately omitted -> app cleanly falls back to Latin binomial
 
