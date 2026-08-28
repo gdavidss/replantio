@@ -542,7 +542,7 @@ async function analyze(pts) {
   if (ctl.signal.aborted) return;
 
   await speciesReady;
-  const site = { ...agg, ph: soil?.phh2o ?? null, lat: c.lat, elevation: clim.elevation, place: place?.label ?? null, terrain };
+  const site = { ...agg, ph: soil?.ph ?? soil?.phh2o ?? null, soil: soil ?? null, lat: c.lat, elevation: clim.elevation, place: place?.label ?? null, terrain };
   if (terrain && terrain.slope >= 1.5 && terrain.aspectDeg != null && agg.rad != null) {
     const monthlyFactors = monthlySlopeSolarFactors(c.lat, terrain.slope, terrain.aspectDeg);
     // annual factor weighted by each month's flat-plane insolation: a plain
@@ -1902,7 +1902,7 @@ async function futureOutlook(ctl) {
     const j = await (await fetch(url, { signal: ctl.signal })).json();
     if (!j.daily?.time?.length || ctl.signal.aborted) return;
     const agg = aggregateClimate(j.daily);
-    const fsite = { ...agg, ph: current.site.ph, lat: c.lat };
+    const fsite = { ...agg, ph: current.site.ph, soil: current.site.soil ?? null, lat: c.lat };
     for (const s of current.scored) {
       s.f45 = scoreSpecies(s.sp, fsite, { native: nativeRegion(s.sp) === true,
         countryNative: !L3_REGIONS[current.cc] && nativeHere(s.sp) === true,
