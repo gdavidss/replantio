@@ -1,4 +1,4 @@
-import { aggregateClimate, scoreSpecies, grade, gradeColor, monthlyDaylengths, monthlySlopeSolarFactors, monthlyFlatInsolation, maxSoilDepthCm } from "./scoring.js";
+import { aggregateClimate, scoreSpecies, grade, gradeColor, monthlyDaylengths, monthlySlopeSolarFactors, monthlyFlatInsolation, maxSoilDepthCm, aggregateSoilProfile } from "./scoring.js";
 import { DICTS, LANGS, NAMES, LOCALES, MONTHS_ALL } from "./i18n.js";
 import { CLASSES, projection, maturityYears, co2eKgPerTree, co2eTonsPerHa, height, dbhCm, crownDiameterM, crownDisplayM, standDisplay, STEMS_PER_HA } from "./growth.js";
 
@@ -410,16 +410,24 @@ async function fetchClimate(c, signal) {
 async function fetchSoil(c, signal) {
   try {
     const url = `https://rest.isric.org/soilgrids/v2.0/properties/query?lon=${c.lng.toFixed(4)}&lat=${c.lat.toFixed(4)}` +
-      `&property=phh2o&depth=0-5cm&depth=5-15cm&value=mean`;
+      `&property=phh2o&property=sand&property=silt&property=clay&property=soc&property=bdod&property=cec&property=cfvo` +
+      `&depth=0-5cm&depth=5-15cm&depth=15-30cm&depth=30-60cm&depth=60-100cm&value=mean`;
     const j = await (await fetch(url, { signal })).json();
-    const layer = j.properties?.layers?.find(l => l.name === "phh2o");
-    const THICKNESS = { "0-5cm": 5, "5-15cm": 10 };
-    let vsum = 0, wsum = 0;
-    for (const d of layer?.depths ?? []) {
-      const v = d.values.mean, w = THICKNESS[d.label] ?? 0;
-      if (v != null && w) { vsum += v * w; wsum += w; }
-    }
-    return { phh2o: wsum ? (vsum / wsum) / layer.unit_measure.d_factor : null };
+    const profile = aggregateSoilProfile(j.properties?.layers, 100);
+    if (!profile) return null;
+    return {
+      phh2o: profile.ph,
+      ph: profile.ph,
+      texture: profile.faoTexture,
+      usdaTexture: profile.usdaTexture,
+      sand: profile.sand,
+      silt: profile.silt,
+      clay: profile.clay,
+      awcMm: profile.hydrology?.awcMm,
+      somPct: profile.somPct,
+      bdod: profile.bdod,
+      cec: profile.cec,
+    };
   } catch (e) {
     if (e.name === "AbortError") throw e;
     return null; // soil is optional: rate limit / outage degrades gracefully

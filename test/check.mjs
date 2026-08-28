@@ -1,7 +1,7 @@
 // Self-check for the scoring and growth engines. Run: node test/check.mjs
 import assert from "node:assert";
 import { readFileSync } from "node:fs";
-import { trap, daylength, slopeSolarFactor, monthlySlopeSolarFactors, monthlyFlatInsolation, maxSoilDepthCm, scorePerennialRain, SLOPE_FLAT_DEG, SLOPE_MAX_DEG, MAX_SLOPE_DRAIN_FACTOR, scoreSpecies, aggregateClimate, grade, aridityClass } from "../scoring.js";
+import { trap, daylength, slopeSolarFactor, monthlySlopeSolarFactors, monthlyFlatInsolation, maxSoilDepthCm, scorePerennialRain, SLOPE_FLAT_DEG, SLOPE_MAX_DEG, MAX_SLOPE_DRAIN_FACTOR, scoreSpecies, aggregateClimate, grade, aridityClass, usdaTextureClass, faoTextureCategory, saxtonRawlsHydrology, aggregateSoilProfile } from "../scoring.js";
 import { CLASSES, height, dbhCm, co2eKgPerTree, crownDiameterM, crownDisplayM, standDisplay, maturityYears } from "../growth.js";
 
 const species = JSON.parse(readFileSync(new URL("../data/species.json", import.meta.url)));
@@ -515,6 +515,36 @@ assert.equal(acHeavy.factors.texture, 0.6, "suboptimal texture receives 0.6 soft
 // Salinity caveat on alkaline/sodic soils
 const appleAlkaline = scoreSpecies(apple, { ...berlin, ph: 8.8 });
 assert.equal(appleAlkaline.factors.salinity, 0.5, "pH >= 8.5 triggers 0.5 salinity caveat for salt-sensitive species");
+
+// --- USDA ternary simplex and FAO mapping
+assert.equal(usdaTextureClass(92, 5, 3), "Sand", "USDA Sand centroid");
+assert.equal(usdaTextureClass(40, 40, 20), "Loam", "USDA Loam centroid");
+assert.equal(usdaTextureClass(20, 20, 60), "Clay", "USDA Clay centroid");
+assert.equal(usdaTextureClass(20, 65, 15), "Silt Loam", "USDA Silt Loam");
+assert.equal(usdaTextureClass(40, 40, 20, 25), "Organic", "SOM >= 20% is Organic");
+assert.equal(faoTextureCategory("Sand"), "light");
+assert.equal(faoTextureCategory("Loam"), "medium");
+assert.equal(faoTextureCategory("Clay"), "heavy");
+assert.equal(faoTextureCategory("Organic"), "organic");
+
+// --- Saxton & Rawls (2006) pedotransfer physical monotonicity
+const hydroLoam = saxtonRawlsHydrology(40, 20, 2.0, 1.35, 0, 100);
+assert.ok(hydroLoam.thetaWp > 0 && hydroLoam.thetaWp < hydroLoam.thetaFc, "0 < thetaWp < thetaFc");
+assert.ok(hydroLoam.thetaFc < hydroLoam.thetaSat && hydroLoam.thetaSat <= 1.0, "thetaFc < thetaSat <= 1.0");
+assert.ok(hydroLoam.awcMm > 50 && hydroLoam.awcMm < 250, "Loam AWC is physically plausible (50-250 mm/m)");
+
+// --- aggregateSoilProfile with mock SoilGrids layer response
+const mockSoilLayers = [
+  { name: "phh2o", unit_measure: { d_factor: 10 }, depths: [{ label: "0-5cm", values: { mean: 65 } }, { label: "5-15cm", values: { mean: 60 } }] },
+  { name: "sand", unit_measure: { d_factor: 10 }, depths: [{ label: "0-5cm", values: { mean: 400 } }, { label: "5-15cm", values: { mean: 400 } }] },
+  { name: "silt", unit_measure: { d_factor: 10 }, depths: [{ label: "0-5cm", values: { mean: 400 } }, { label: "5-15cm", values: { mean: 400 } }] },
+  { name: "clay", unit_measure: { d_factor: 10 }, depths: [{ label: "0-5cm", values: { mean: 200 } }, { label: "5-15cm", values: { mean: 200 } }] },
+];
+const aggSoil = aggregateSoilProfile(mockSoilLayers, 100);
+close(aggSoil.ph, 6.17, 0.05, "aggregated pH is weighted correctly");
+assert.equal(aggSoil.usdaTexture, "Loam");
+assert.equal(aggSoil.faoTexture, "medium");
+assert.ok(aggSoil.hydrology.awcMm > 0);
 
 console.log("all checks passed");
 console.log(`  oak@Berlin ${qrBerlin.score.toFixed(2)} | euc@Berlin ${egBerlin.score.toFixed(2)} | euc@SP ${egSP.score.toFixed(2)}`);
