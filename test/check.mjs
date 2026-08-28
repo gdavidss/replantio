@@ -482,6 +482,40 @@ const rizeAI = rizeNormals.prec.reduce((a, b) => a + b, 0) / rizeNormals.et0.red
 close(rizeAI, 2.66, 0.05, "Rize AI ~ 2.66");
 assert.equal(aridityClass(rizeAI), "Humid", "Rize is humid");
 
+// --- soil properties soft scoring (EcoCrop edaphic envelopes)
+const oakBerlinBase = scoreSpecies(qr, berlin);
+assert.ok(oakBerlinBase.score > 0.9, "oak scores high in Berlin without soil constraint");
+
+// Soft depth constraint: 130 cm soil for 150 cm depmin oak must apply a soft penalty (~0.933), NEVER 0.00 hard-kill!
+const oakBerlin130cm = scoreSpecies(qr, { ...berlin, soil: { depth: 130 } });
+assert.equal(oakBerlin130cm.factors.soilDepth, 0.5 + 0.5 * (130 / 150), "depth factor is soft linear penalty");
+close(oakBerlin130cm.score, oakBerlinBase.score * (0.5 + 0.5 * (130 / 150)), 0.01, "oak in Berlin with 130cm depth retains >0.85 suitability");
+assert.ok(oakBerlin130cm.score > 0.85, "oak is NOT hard-killed by 130cm soil depth");
+
+// Texture matching & soft penalties:
+// 1) Pinus sylvestris (Scots pine, text_opt: ['light', 'medium'], text_tol: ['heavy', 'light', 'medium'])
+assert.ok(scotsPine.text_opt?.includes("light") && scotsPine.text_opt?.includes("medium"));
+const pineLight = scoreSpecies(scotsPine, { ...berlin, soil: { texture: "light" } });
+const pineMedium = scoreSpecies(scotsPine, { ...berlin, soil: { texture: "medium" } });
+const pineHeavy = scoreSpecies(scotsPine, { ...berlin, soil: { texture: "heavy" } });
+assert.equal(pineLight.factors.texture, 1.0, "optimal light texture receives 1.0");
+assert.equal(pineMedium.factors.texture, 1.0, "optimal medium texture receives 1.0");
+assert.equal(pineHeavy.factors.texture, 0.8, "tolerated heavy texture receives 0.8");
+
+// 2) Acacia ancistrocarpa (text_opt: ['light'], text_tol: ['light', 'medium'])
+const acaciaAnc = by("Acacia ancistrocarpa");
+assert.deepEqual(acaciaAnc.text_opt, ["light"]);
+const acLight = scoreSpecies(acaciaAnc, { ...berlin, soil: { texture: "light" } });
+const acMedium = scoreSpecies(acaciaAnc, { ...berlin, soil: { texture: "medium" } });
+const acHeavy = scoreSpecies(acaciaAnc, { ...berlin, soil: { texture: "heavy" } });
+assert.equal(acLight.factors.texture, 1.0, "optimal texture receives 1.0");
+assert.equal(acMedium.factors.texture, 0.8, "tolerated secondary texture receives 0.8");
+assert.equal(acHeavy.factors.texture, 0.6, "suboptimal texture receives 0.6 soft penalty");
+
+// Salinity caveat on alkaline/sodic soils
+const appleAlkaline = scoreSpecies(apple, { ...berlin, ph: 8.8 });
+assert.equal(appleAlkaline.factors.salinity, 0.5, "pH >= 8.5 triggers 0.5 salinity caveat for salt-sensitive species");
+
 console.log("all checks passed");
 console.log(`  oak@Berlin ${qrBerlin.score.toFixed(2)} | euc@Berlin ${egBerlin.score.toFixed(2)} | euc@SP ${egSP.score.toFixed(2)}`);
 console.log(`  euc CO2e(10y) ${eucCo2.toFixed(0)} kg | oak CO2e(10y) ${co2eKgPerTree(oakSp, 10).toFixed(1)} kg`);

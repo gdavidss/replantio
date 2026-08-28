@@ -420,7 +420,64 @@ export function scoreSpecies(sp, site, ev = null) {
     photo = sp.photo.some(c => here.has(c)) ? 1 : 0.5;
   }
 
-  const score = Math.min(temp, rain, ph ?? 1, chill ?? 1) * (frost ?? 1) * (photo ?? 1) * (drain ?? 1) * (depth ?? 1) * annual;
+  // ---------------------------------------------------------------------------
+  // Soil Pedology & Edaphic Properties (Soft Penalties / Caveats)
+  // Evaluates site soil measurements (texture, depth, alkalinity/salinity, drainage)
+  // with soft multipliers only; never hard-kills species to 0.00 unless strictly lethal.
+  // ---------------------------------------------------------------------------
+  let texture = null;
+  if (site.soil?.texture && (sp.text_opt || sp.text_tol)) {
+    const st = site.soil.texture.toLowerCase();
+    if (sp.text_opt?.includes(st)) {
+      texture = 1.0;
+    } else if (sp.text_tol?.includes(st)) {
+      texture = 0.8;
+    } else {
+      texture = 0.6; // Suboptimal soil texture aeration/drainage soft penalty
+    }
+  }
+
+  let soilDepth = null;
+  if (site.soil?.depth != null && sp.depmin != null) {
+    if (site.soil.depth >= sp.depmin) {
+      soilDepth = 1.0;
+    } else {
+      const ratio = Math.max(0, site.soil.depth / sp.depmin);
+      soilDepth = Math.max(0.5, Math.min(1.0, 0.5 + 0.5 * ratio));
+    }
+  }
+
+  let salinity = null;
+  const isSodicOrAlkaline = (site.soil?.salinity === "high" || site.soil?.salinity === "medium" || (site.ph != null && site.ph >= 8.5));
+  if (isSodicOrAlkaline || site.soil?.salinity != null) {
+    const siteSal = site.soil?.salinity ?? (site.ph >= 8.5 ? "high" : "low");
+    if (siteSal === "high") {
+      if (sp.sal_tol === "high") salinity = 1.0;
+      else if (sp.sal_tol === "medium") salinity = 0.75;
+      else salinity = 0.5; // Salt-sensitive species caveat on sodic/high-salinity soils
+    } else if (siteSal === "medium") {
+      if (sp.sal_tol === "high" || sp.sal_tol === "medium") salinity = 1.0;
+      else salinity = 0.75;
+    } else {
+      salinity = 1.0;
+    }
+  }
+
+  let drainage = null;
+  if (site.soil?.drainage && (sp.dra_opt || sp.dra_tol)) {
+    const sd = site.soil.drainage.toLowerCase();
+    if (sp.dra_opt?.includes(sd)) {
+      drainage = 1.0;
+    } else if (sp.dra_tol?.includes(sd)) {
+      drainage = 0.8;
+    } else {
+      drainage = 0.6;
+    }
+  }
+
+  const soilFactor = (texture ?? 1) * (soilDepth ?? 1) * (salinity ?? 1) * (drainage ?? 1);
+
+  const score = Math.min(temp, rain, ph ?? 1, chill ?? 1) * (frost ?? 1) * (photo ?? 1) * (drain ?? 1) * (depth ?? 1) * annual * soilFactor;
 
   // Tie-breaker: EcoCrop plateaus leave many species at the same score, so
   // also measure how close the site sits to each envelope's center
@@ -437,7 +494,12 @@ export function scoreSpecies(sp, site, ev = null) {
   if (sp.ph && site.ph != null) fits.push(tri(site.ph, ...sp.ph));
   const fit = fits.reduce((a, b) => a + b, 0) / fits.length;
 
-  return { score, fit, factors: { temp, rain, ph, frost, photo, annual, chill, drain, depth }, window: { start: best, months: Gt } };
+  return {
+    score,
+    fit,
+    factors: { temp, rain, ph, frost, photo, annual, chill, drain, depth, texture, soilDepth, salinity, drainage },
+    window: { start: best, months: Gt }
+  };
 }
 
 export function grade(s) {

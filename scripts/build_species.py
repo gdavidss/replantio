@@ -164,6 +164,80 @@ def soil_depth_min(depr, dep):
         return 20
     return None
 
+def parse_soil_texture(v):
+    """Parses soil texture string into normalized sorted list of categories.
+    Valid categories: 'light', 'medium', 'heavy', 'organic'.
+    'wide' means broad adaptability across all mineral textures -> ['heavy', 'light', 'medium'].
+    """
+    if not v or v.strip().lower() in ("", "na"):
+        return None
+    v = v.strip().lower()
+    tags = set()
+    for part in v.split(","):
+        part = part.strip()
+        if "wide" in part:
+            tags.update(["light", "medium", "heavy"])
+        for t in ("light", "medium", "heavy", "organic"):
+            if t in part:
+                tags.add(t)
+    return sorted(tags) if tags else None
+
+def parse_soil_depth(val):
+    """Returns depth in cm: deep -> 150, medium -> 50, shallow -> 20, very shallow -> 10."""
+    text = (val or "").strip().lower()
+    if not text or text == "na":
+        return None
+    if "deep" in text:
+        return 150
+    if "medium" in text:
+        return 50
+    if "very shallow" in text:
+        return 10
+    if "shallow" in text:
+        return 20
+    return None
+
+def parse_salinity(v):
+    """Normalizes EcoCrop salinity string:
+    'low (<4 dS/m)' / 'none' -> 'low'
+    'medium (4-10 dS/m)' -> 'medium'
+    'high (>10 dS/m))' -> 'high'
+    """
+    if not v or v.strip().lower() in ("", "na"):
+        return None
+    v = v.strip().lower()
+    if "high" in v:
+        return "high"
+    if "medium" in v:
+        return "medium"
+    if "low" in v or "none" in v:
+        return "low"
+    return None
+
+def parse_fertility(v):
+    """'low', 'moderate', 'high'."""
+    if not v or v.strip().lower() in ("", "na"):
+        return None
+    v = v.strip().lower()
+    for f in ("low", "moderate", "high"):
+        if f in v:
+            return f
+    return None
+
+def parse_drainage(v):
+    """Normalizes drainage categories: 'poorly', 'well', 'excessive'."""
+    if not v or v.strip().lower() in ("", "na"):
+        return None
+    v = v.strip().lower()
+    tags = set()
+    if "poorly" in v:
+        tags.add("poorly")
+    if "well" in v:
+        tags.add("well")
+    if "excessive" in v:
+        tags.add("excessive")
+    return sorted(tags) if tags else None
+
 def growth_class(sci, famname, topt_mid, ktmpr):
     genus = sci.split()[0]
     rate = "fast" if genus in FAST else "slow" if genus in SLOW else "medium"
@@ -239,6 +313,34 @@ def main():
         photo = photoperiod(r["PHOTO"])
         use_list = infer_uses(r, is_tree)
 
+        text_opt = parse_soil_texture(r.get("TEXT"))
+        text_tol = parse_soil_texture(r.get("TEXTR"))
+        if text_opt and text_tol:
+            text_tol = sorted(set(text_tol).union(text_opt))
+        elif text_opt and not text_tol:
+            text_tol = text_opt
+
+        depopt = parse_soil_depth(r.get("DEP"))
+        dmin = soil_depth_min(r.get("DEPR"), r.get("DEP"))
+
+        sal_opt = parse_salinity(r.get("SAL"))
+        sal_tol = parse_salinity(r.get("SALR"))
+        sal_order = {"low": 1, "medium": 2, "high": 3}
+        if sal_opt and sal_tol and sal_order.get(sal_opt, 0) > sal_order.get(sal_tol, 0):
+            sal_tol = sal_opt
+
+        fer_opt = parse_fertility(r.get("FER"))
+        fer_tol = parse_fertility(r.get("FERR"))
+
+        dra_opt = parse_drainage(r.get("DRA"))
+        dra_tol = parse_drainage(r.get("DRAR"))
+        if dra_opt and dra_tol:
+            dra_tol = sorted(set(dra_tol).union(dra_opt))
+        elif dra_opt and not dra_tol:
+            dra_tol = dra_opt
+
+        shade = ("shade" in (r.get("LIOPMN") or "").lower() or "shade" in (r.get("LIOPMX") or "").lower())
+
         out.append({
             "id": code,
             "sci": sci,
@@ -257,7 +359,17 @@ def main():
             # annual-capable: frost is tested on the growing window, not the winter
             **({"annual": True} if is_annual else {}),
             # minimum required soil depth (cm): absolute DEPR fallback to DEP
-            **({"depmin": dmin} if (dmin := soil_depth_min(r.get("DEPR"), r.get("DEP"))) is not None else {}),
+            **({"depmin": dmin} if dmin is not None else {}),
+            **({"depopt": depopt} if depopt is not None else {}),
+            **({"text_opt": text_opt} if text_opt else {}),
+            **({"text_tol": text_tol} if text_tol else {}),
+            **({"sal_opt": sal_opt} if sal_opt else {}),
+            **({"sal_tol": sal_tol} if sal_tol else {}),
+            **({"fer_opt": fer_opt} if fer_opt else {}),
+            **({"fer_tol": fer_tol} if fer_tol else {}),
+            **({"dra_opt": dra_opt} if dra_opt else {}),
+            **({"dra_tol": dra_tol} if dra_tol else {}),
+            **({"shade": True} if shade else {}),
             "photo": photo,
             "cycle": cyc,
             "altmax": vals["ALTMX"],
