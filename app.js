@@ -1,4 +1,4 @@
-import { aggregateClimate, scoreSpecies, grade, gradeColor, monthlyDaylengths, monthlySlopeSolarFactors, monthlyFlatInsolation, maxSoilDepthCm } from "./scoring.js";
+import { aggregateClimate, scoreSpecies, grade, gradeColor, monthlyDaylengths, monthlySlopeSolarFactors, monthlyFlatInsolation, maxSoilDepthCm, normalizeSearch } from "./scoring.js";
 import { DICTS, LANGS, NAMES, LOCALES, MONTHS_ALL } from "./i18n.js";
 import { CLASSES, projection, maturityYears, co2eKgPerTree, co2eTonsPerHa, height, dbhCm, crownDiameterM, crownDisplayM, standDisplay, STEMS_PER_HA } from "./growth.js";
 
@@ -755,7 +755,7 @@ const critIsDefault = () => current.filter === "all" && !current.matMax && !curr
 // species search: "does X grow here?" is a question, so it overrides the
 // chips (but never the guardrails: invasives answer with the reason, not
 // silence) and surfaces zero-score species whose card explains the why.
-const deacc = t => (t ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+const deacc = t => normalizeSearch(t);
 function searchMatches(q) {
   const needle = deacc(q.trim());
   if (!needle) return null;

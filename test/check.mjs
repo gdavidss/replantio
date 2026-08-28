@@ -1,7 +1,7 @@
 // Self-check for the scoring and growth engines. Run: node test/check.mjs
 import assert from "node:assert";
 import { readFileSync } from "node:fs";
-import { trap, daylength, slopeSolarFactor, monthlySlopeSolarFactors, monthlyFlatInsolation, maxSoilDepthCm, scorePerennialRain, SLOPE_FLAT_DEG, SLOPE_MAX_DEG, MAX_SLOPE_DRAIN_FACTOR, scoreSpecies, aggregateClimate, grade, aridityClass } from "../scoring.js";
+import { trap, daylength, slopeSolarFactor, monthlySlopeSolarFactors, monthlyFlatInsolation, maxSoilDepthCm, scorePerennialRain, SLOPE_FLAT_DEG, SLOPE_MAX_DEG, MAX_SLOPE_DRAIN_FACTOR, scoreSpecies, aggregateClimate, grade, aridityClass, normalizeSearch } from "../scoring.js";
 import { CLASSES, height, dbhCm, co2eKgPerTree, crownDiameterM, crownDisplayM, standDisplay, maturityYears } from "../growth.js";
 
 const species = JSON.parse(readFileSync(new URL("../data/species.json", import.meta.url)));
@@ -481,6 +481,22 @@ const rizeNormals = {
 const rizeAI = rizeNormals.prec.reduce((a, b) => a + b, 0) / rizeNormals.et0.reduce((a, b) => a + b, 0);
 close(rizeAI, 2.66, 0.05, "Rize AI ~ 2.66");
 assert.equal(aridityClass(rizeAI), "Humid", "Rize is humid");
+
+// --- search normalization (de-accentuation and Turkish diacritics)
+assert.equal(normalizeSearch("çam"), "cam");
+assert.equal(normalizeSearch("ÇAM"), "cam");
+assert.equal(normalizeSearch("ısırgan"), "isirgan");
+assert.equal(normalizeSearch("ISIRGAN"), "isirgan");
+assert.equal(normalizeSearch("İsırgan"), "isirgan");
+assert.equal(normalizeSearch("şeker pancarı"), "seker pancari");
+assert.equal(normalizeSearch("ŞEKER PANCARI"), "seker pancari");
+assert.equal(normalizeSearch("göknar"), "goknar");
+assert.equal(normalizeSearch("fındık"), "findik");
+assert.equal(normalizeSearch("açúcar"), "acucar");
+assert.equal(normalizeSearch("chêne"), "chene");
+assert.equal(normalizeSearch("Quercus robur"), "quercus robur");
+assert.equal(normalizeSearch(""), "");
+assert.equal(normalizeSearch(null), "");
 
 console.log("all checks passed");
 console.log(`  oak@Berlin ${qrBerlin.score.toFixed(2)} | euc@Berlin ${egBerlin.score.toFixed(2)} | euc@SP ${egSP.score.toFixed(2)}`);

@@ -25,6 +25,22 @@ export function daylength(lat, doy, p = 0.8333) {
   return 24 - (24 / Math.PI) * Math.acos(a);
 }
 
+// Locale-aware search normalizer for Latin & Turkish botanical names
+// Handles Turkish dotless-i (ı/I -> i), dotted-capital (İ -> i), and special diacritics
+export function normalizeSearch(t) {
+  if (!t) return "";
+  return String(t)
+    .replace(/[İıI]/g, "i")
+    .replace(/[Çç]/g, "c")
+    .replace(/[Ğğ]/g, "g")
+    .replace(/[Öö]/g, "o")
+    .replace(/[Şş]/g, "s")
+    .replace(/[Üü]/g, "u")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
 const MID_DOY = [15, 46, 74, 105, 135, 166, 196, 227, 258, 288, 319, 349];
 
 export function monthlyDaylengths(lat) {
