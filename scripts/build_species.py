@@ -360,16 +360,14 @@ def main():
             **({"annual": True} if is_annual else {}),
             # minimum required soil depth (cm): absolute DEPR fallback to DEP
             **({"depmin": dmin} if dmin is not None else {}),
-            **({"depopt": depopt} if depopt is not None else {}),
+            # only fields the scorer reads are emitted; depopt/sal_opt/fer_*/
+            # shade are parsed above for future use but cost ~145 KB that
+            # nothing reads yet (payload is fetched by every visitor)
             **({"text_opt": text_opt} if text_opt else {}),
             **({"text_tol": text_tol} if text_tol else {}),
-            **({"sal_opt": sal_opt} if sal_opt else {}),
             **({"sal_tol": sal_tol} if sal_tol else {}),
-            **({"fer_opt": fer_opt} if fer_opt else {}),
-            **({"fer_tol": fer_tol} if fer_tol else {}),
             **({"dra_opt": dra_opt} if dra_opt else {}),
             **({"dra_tol": dra_tol} if dra_tol else {}),
-            **({"shade": True} if shade else {}),
             "photo": photo,
             "cycle": cyc,
             "altmax": vals["ALTMX"],

@@ -1,7 +1,7 @@
 // Self-check for the scoring and growth engines. Run: node test/check.mjs
 import assert from "node:assert";
 import { readFileSync } from "node:fs";
-import { trap, daylength, slopeSolarFactor, monthlySlopeSolarFactors, monthlyFlatInsolation, maxSoilDepthCm, scorePerennialRain, SLOPE_FLAT_DEG, SLOPE_MAX_DEG, MAX_SLOPE_DRAIN_FACTOR, scoreSpecies, aggregateClimate, grade, aridityClass, usdaTextureClass, faoTextureCategory, saxtonRawlsHydrology, aggregateSoilProfile } from "../scoring.js";
+import { trap, daylength, slopeSolarFactor, monthlySlopeSolarFactors, monthlyFlatInsolation, maxSoilDepthCm, scorePerennialRain, SLOPE_FLAT_DEG, SLOPE_MAX_DEG, MAX_SLOPE_DRAIN_FACTOR, scoreSpecies, aggregateClimate, grade, aridityClass, usdaTextureClass, faoTextureCategory, saxtonRawlsHydrology, aggregateSoilProfile, normalizeSearch } from "../scoring.js";
 import { CLASSES, height, dbhCm, co2eKgPerTree, crownDiameterM, crownDisplayM, standDisplay, maturityYears } from "../growth.js";
 
 const species = JSON.parse(readFileSync(new URL("../data/species.json", import.meta.url)));
@@ -513,13 +513,22 @@ assert.equal(acMedium.factors.texture, 0.8, "tolerated secondary texture receive
 assert.equal(acHeavy.factors.texture, 0.6, "suboptimal texture receives 0.6 soft penalty");
 
 // Salinity caveat on alkaline/sodic soils
+// pH is alkalinity, not salinity: a high-pH site must NOT trigger the
+// salinity caveat (the pH trapezoid already scores alkalinity; the original
+// conflation halved alkaline-tolerant species on user-measured pH 8.6)
 const appleAlkaline = scoreSpecies(apple, { ...berlin, ph: 8.8 });
-assert.equal(appleAlkaline.factors.salinity, 0.5, "pH >= 8.5 triggers 0.5 salinity caveat for salt-sensitive species");
+assert.equal(appleAlkaline.factors.salinity, null, "high pH alone never triggers the salinity factor");
+const appleSaline = scoreSpecies(apple, { ...berlin, soil: { salinity: "high" } });
+assert.equal(appleSaline.factors.salinity, 0.5, "measured high salinity demotes salt-sensitive species");
+const noSalData = species.find(s => !s.sal_tol && s.ph);
+assert.equal(scoreSpecies(noSalData, { ...berlin, soil: { salinity: "high" } }).factors.salinity, null,
+  "species without SALR data are skipped, same policy as texture");
 
 // --- USDA ternary simplex and FAO mapping
 assert.equal(usdaTextureClass(92, 5, 3), "Sand", "USDA Sand centroid");
 assert.equal(usdaTextureClass(40, 40, 20), "Loam", "USDA Loam centroid");
 assert.equal(usdaTextureClass(20, 20, 60), "Clay", "USDA Clay centroid");
+assert.equal(usdaTextureClass(50, 13, 37), "Sandy Clay", "USDA Sandy Clay starts at clay 35 (not 40)");
 assert.equal(usdaTextureClass(20, 65, 15), "Silt Loam", "USDA Silt Loam");
 assert.equal(usdaTextureClass(40, 40, 20, 25), "Organic", "SOM >= 20% is Organic");
 assert.equal(faoTextureCategory("Sand"), "light");
@@ -545,6 +554,29 @@ close(aggSoil.ph, 6.17, 0.05, "aggregated pH is weighted correctly");
 assert.equal(aggSoil.usdaTexture, "Loam");
 assert.equal(aggSoil.faoTexture, "medium");
 assert.ok(aggSoil.hydrology.awcMm > 0);
+
+// --- search normalization (de-accentuation and Turkish diacritics)
+assert.equal(normalizeSearch("çam"), "cam");
+assert.equal(normalizeSearch("ÇAM"), "cam");
+assert.equal(normalizeSearch("ısırgan"), "isirgan");
+assert.equal(normalizeSearch("ISIRGAN"), "isirgan");
+assert.equal(normalizeSearch("İsırgan"), "isirgan");
+assert.equal(normalizeSearch("şeker pancarı"), "seker pancari");
+assert.equal(normalizeSearch("ŞEKER PANCARI"), "seker pancari");
+assert.equal(normalizeSearch("göknar"), "goknar");
+assert.equal(normalizeSearch("fındık"), "findik");
+assert.equal(normalizeSearch("açúcar"), "acucar");
+assert.equal(normalizeSearch("chêne"), "chene");
+assert.equal(normalizeSearch("Quercus robur"), "quercus robur");
+assert.equal(normalizeSearch(""), "");
+assert.equal(normalizeSearch(null), "");
+// decomposed forms and the non-Turkish regression guard (#17 review):
+// toLocaleLowerCase('tr') must never be used here ("IPE" would become "ıpe")
+assert.equal(normalizeSearch("İncir".normalize("NFD")), "incir");
+assert.equal(normalizeSearch("i\u0307ncir"), "incir");
+assert.equal(normalizeSearch("İNCİR"), "incir");
+assert.equal(normalizeSearch("İSTANBUL"), "istanbul");
+assert.equal(normalizeSearch("IPE"), "ipe");
 
 console.log("all checks passed");
 console.log(`  oak@Berlin ${qrBerlin.score.toFixed(2)} | euc@Berlin ${egBerlin.score.toFixed(2)} | euc@SP ${egSP.score.toFixed(2)}`);

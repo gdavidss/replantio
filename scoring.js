@@ -25,6 +25,22 @@ export function daylength(lat, doy, p = 0.8333) {
   return 24 - (24 / Math.PI) * Math.acos(a);
 }
 
+// Locale-aware search normalizer for Latin & Turkish botanical names
+// Handles Turkish dotless-i (ı/I -> i), dotted-capital (İ -> i), and special diacritics
+export function normalizeSearch(t) {
+  if (!t) return "";
+  return String(t)
+    .replace(/[İıI]/g, "i")
+    .replace(/[Çç]/g, "c")
+    .replace(/[Ğğ]/g, "g")
+    .replace(/[Öö]/g, "o")
+    .replace(/[Şş]/g, "s")
+    .replace(/[Üü]/g, "u")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
 const MID_DOY = [15, 46, 74, 105, 135, 166, 196, 227, 258, 288, 319, 349];
 
 export function monthlyDaylengths(lat) {
@@ -152,6 +168,7 @@ export function usdaTextureClass(sand, silt, clay, som = 0) {
     if (s >= 45.0) return "Sandy Clay";
     return "Clay";
   } else if (c >= 27.0) {
+    if (c >= 35.0 && s >= 45.0) return "Sandy Clay"; // USDA: sandy clay starts at clay 35, not 40
     if (s < 20.0) return "Silty Clay Loam";
     if (s <= 45.0) return "Clay Loam";
     return "Sandy Clay Loam";
@@ -637,17 +654,21 @@ export function scoreSpecies(sp, site, ev = null) {
     }
   }
 
+  // Gated on MEASURED site salinity only. pH >= 8.5 is alkalinity, which the
+  // pH trapezoid already scores; conflating it with EcoCrop SALR (electrical
+  // conductivity, dS/m) double-counted and punished exactly the
+  // alkaline-tolerant species the pH envelope had vetted (#15 review; a
+  // user-typed measured pH of 8.6 halved species with no salinity data at
+  // all). Species without SALR data are skipped, the same missing-data
+  // policy as texture and drainage. Nothing sets site.soil.salinity today;
+  // the branch activates only when real point salinity data exists.
   let salinity = null;
-  const isSodicOrAlkaline = (site.soil?.salinity === "high" || site.soil?.salinity === "medium" || (site.ph != null && site.ph >= 8.5));
-  if (isSodicOrAlkaline || site.soil?.salinity != null) {
-    const siteSal = site.soil?.salinity ?? (site.ph >= 8.5 ? "high" : "low");
+  if (site.soil?.salinity != null && sp.sal_tol != null) {
+    const siteSal = site.soil.salinity;
     if (siteSal === "high") {
-      if (sp.sal_tol === "high") salinity = 1.0;
-      else if (sp.sal_tol === "medium") salinity = 0.75;
-      else salinity = 0.5; // Salt-sensitive species caveat on sodic/high-salinity soils
+      salinity = sp.sal_tol === "high" ? 1.0 : sp.sal_tol === "medium" ? 0.75 : 0.5;
     } else if (siteSal === "medium") {
-      if (sp.sal_tol === "high" || sp.sal_tol === "medium") salinity = 1.0;
-      else salinity = 0.75;
+      salinity = (sp.sal_tol === "high" || sp.sal_tol === "medium") ? 1.0 : 0.75;
     } else {
       salinity = 1.0;
     }

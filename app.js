@@ -1,4 +1,4 @@
-import { aggregateClimate, scoreSpecies, grade, gradeColor, monthlyDaylengths, monthlySlopeSolarFactors, monthlyFlatInsolation, maxSoilDepthCm, aggregateSoilProfile } from "./scoring.js";
+import { aggregateClimate, scoreSpecies, grade, gradeColor, monthlyDaylengths, monthlySlopeSolarFactors, monthlyFlatInsolation, maxSoilDepthCm, aggregateSoilProfile, normalizeSearch } from "./scoring.js";
 import { DICTS, LANGS, NAMES, LOCALES, MONTHS_ALL } from "./i18n.js";
 import { CLASSES, projection, maturityYears, co2eKgPerTree, co2eTonsPerHa, height, dbhCm, crownDiameterM, crownDisplayM, standDisplay, STEMS_PER_HA } from "./growth.js";
 
@@ -17,6 +17,9 @@ const fmtC = x => x >= 1e6 ? (x / 1e6).toFixed(1) + "M" : x >= 1e4 ? Math.round(
 const fmtHa = h => h >= 10 ? fmt(h) + " ha" : h >= 0.1 ? fmt(h, 1) + " ha" : fmt(h * 10000) + " m\u00b2";
 const THIS_YEAR = new Date().getFullYear();
 const MONTHS = MONTHS_ALL[LANG] ?? MONTHS_ALL.en;
+// FAO texture categories (from ISRIC sand/silt/clay via the USDA simplex) to
+// user-readable i18n keys
+const TEXTURE_NAMES = { light: "light (sandy)", medium: "medium (loamy)", heavy: "heavy (clayey)", organic: "organic (peaty)" };
 
 // ---------- map ----------
 const map = L.map("map", { zoomControl: true, worldCopyJump: true, attributionControl: false }).setView([-15, -52], 4);
@@ -409,11 +412,15 @@ async function fetchClimate(c, signal) {
 
 async function fetchSoil(c, signal) {
   try {
+    // Trimmed to what scoring actually reads (pH + texture; soc feeds the
+    // organic-texture check): the wide 8-property/5-depth query took 8-12s
+    // against ISRIC on a healthy day, eating most of the 15s race budget and
+    // often losing pH where the old narrow query got it in ~1s (#16 review).
     const url = `https://rest.isric.org/soilgrids/v2.0/properties/query?lon=${c.lng.toFixed(4)}&lat=${c.lat.toFixed(4)}` +
-      `&property=phh2o&property=sand&property=silt&property=clay&property=soc&property=bdod&property=cec&property=cfvo` +
-      `&depth=0-5cm&depth=5-15cm&depth=15-30cm&depth=30-60cm&depth=60-100cm&value=mean`;
+      `&property=phh2o&property=sand&property=silt&property=clay&property=soc` +
+      `&depth=0-5cm&depth=5-15cm&depth=15-30cm&value=mean`;
     const j = await (await fetch(url, { signal })).json();
-    const profile = aggregateSoilProfile(j.properties?.layers, 100);
+    const profile = aggregateSoilProfile(j.properties?.layers, 30);
     if (!profile) return null;
     return {
       phh2o: profile.ph,
@@ -425,8 +432,6 @@ async function fetchSoil(c, signal) {
       clay: profile.clay,
       awcMm: profile.hydrology?.awcMm,
       somPct: profile.somPct,
-      bdod: profile.bdod,
-      cec: profile.cec,
     };
   } catch (e) {
     if (e.name === "AbortError") throw e;
@@ -763,7 +768,7 @@ const critIsDefault = () => current.filter === "all" && !current.matMax && !curr
 // species search: "does X grow here?" is a question, so it overrides the
 // chips (but never the guardrails: invasives answer with the reason, not
 // silence) and surfaces zero-score species whose card explains the why.
-const deacc = t => (t ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+const deacc = normalizeSearch;
 function searchMatches(q) {
   const needle = deacc(q.trim());
   if (!needle) return null;
@@ -846,6 +851,7 @@ function renderResults() {
     </div>
     <div class="readout">
       ${rd(tr("soil pH"), site.ph != null ? `${fmt(site.ph, 1)}${site.phUser != null ? ` <span class="chk">(${tr("measured")})</span>` : ""}` : tr("no data"))}
+      ${rd(tr("soil texture"), site.soil?.texture ? tr(TEXTURE_NAMES[site.soil.texture] ?? site.soil.texture) : tr("no data"), tr("ISRIC SoilGrids topsoil (0-30 cm); scored softly against each species' EcoCrop texture preference"))}
       ${rd(tr("elevation"), `${fmt(site.elevation)} m`)}
       ${rd(tr("daylength"), `${fmt(Math.min(...dls), 1)}&ndash;${fmt(Math.max(...dls), 1)} h`)}
       ${rd(tr("record low"), site.absMin != null ? `${fmt(site.absMin)} °C` : tr("n/a"))}
@@ -1250,6 +1256,7 @@ function speciesDetail(id) {
     if (s.factors.photo != null && s.factors.photo < 1) notes.push(tr("Photoperiod outside this species' range: 0.5 penalty applied."));
     if (s.factors.drain === 0) notes.push(tfmt("This is a wetland species (needs saturated soil or standing water), and this point sits on a {n}° slope.", { n: fmt(current.site.terrain?.slope ?? 0) }));
     if (s.factors.depth != null && s.factors.depth < 1) notes.push(tfmt("Requires at least {req} cm soil depth (EcoCrop), but this {slope}° slope supports only ~{avail} cm equilibrium soil.", { req: fmt(sp.depmin), slope: fmt(current.site.terrain?.slope ?? 0), avail: fmt(maxSoilDepthCm(current.site.terrain?.slope ?? 0)) }));
+    if (s.factors.texture != null && s.factors.texture < 1) notes.push(tfmt("The measured topsoil here is {t}, outside this species' preferred texture range: soft penalty, never an exclusion.", { t: tr(TEXTURE_NAMES[current.site.soil?.texture] ?? current.site.soil?.texture ?? "") }));
     if (current.site.irrigated) notes.push(tr("Scored as irrigated: water counts as available up to this species' optimum. Excess rain still applies."));
     else if (s.factors.rain < 0.2 && s.factors.temp >= 0.5) notes.push(tr("Rainfall is the limiting factor here. The model scores rainfed growing only; irrigation changes this picture entirely."));
     // wet-margin demote: rain 0.5 with the scored total above the ceiling can
