@@ -134,6 +134,134 @@ export function aridityClass(ai) {
   return "Humid";
 }
 
+// ---------------------------------------------------------------------------
+// Köppen-Geiger Climate Classification (Peel, Finlayson & McMahon 2007)
+// Hydrol. Earth Syst. Sci., 11, 1633–1644.
+// Deterministic 3-letter bioclimatic zoning from monthly temperature & rain normals.
+// ---------------------------------------------------------------------------
+export const KOPPEN_DESCRIPTIONS = {
+  Af: "Tropical rainforest",
+  Am: "Tropical monsoon",
+  As: "Tropical savanna (dry summer)",
+  Aw: "Tropical savanna (dry winter)",
+  BWh: "Hot desert",
+  BWk: "Cold desert",
+  BSh: "Hot semi-arid",
+  BSk: "Cold semi-arid (steppe)",
+  Csa: "Hot-summer Mediterranean",
+  Csb: "Warm-summer Mediterranean",
+  Csc: "Cold-summer Mediterranean",
+  Cfa: "Humid subtropical",
+  Cfb: "Oceanic (temperate marine)",
+  Cfc: "Subpolar oceanic",
+  Cwa: "Monsoon-influenced humid subtropical",
+  Cwb: "Subtropical highland",
+  Cwc: "Cold subtropical highland",
+  Dsa: "Hot dry-summer continental",
+  Dsb: "Warm dry-summer continental",
+  Dsc: "Dry-summer subarctic",
+  Dsd: "Extremely cold dry-summer subarctic",
+  Dfa: "Hot-summer humid continental",
+  Dfb: "Warm-summer humid continental",
+  Dfc: "Subarctic",
+  Dfd: "Extremely cold subarctic",
+  Dwa: "Monsoon-influenced hot-summer continental",
+  Dwb: "Monsoon-influenced warm-summer continental",
+  Dwc: "Monsoon-influenced subarctic",
+  Dwd: "Monsoon-influenced extremely cold subarctic",
+  ET: "Tundra",
+  EF: "Ice cap / perpetual frost",
+};
+
+export function koppenGeigerClass(tavg, prec, lat = 0) {
+  if (!Array.isArray(tavg) || tavg.length !== 12 || !Array.isArray(prec) || prec.length !== 12) return null;
+  if (tavg.some(t => t == null || !Number.isFinite(t)) || prec.some(p => p == null || !Number.isFinite(p))) return null;
+
+  const tMean = tavg.reduce((a, b) => a + b, 0) / 12;
+  const pAnn = prec.reduce((a, b) => a + b, 0);
+  const tMax = Math.max(...tavg);
+  const tMin = Math.min(...tavg);
+  const n10 = tavg.filter(t => t >= 10).length;
+
+  // 6-month summer and winter blocks:
+  // Northern (lat >= 0): Summer = Apr-Sep (indices 3..8), Winter = Oct-Mar (0..2, 9..11)
+  // Southern (lat < 0): Summer = Oct-Mar, Winter = Apr-Sep
+  const isNorth = (lat ?? 0) >= 0;
+  const summerIndices = isNorth ? [3, 4, 5, 6, 7, 8] : [9, 10, 11, 0, 1, 2];
+  const winterIndices = isNorth ? [9, 10, 11, 0, 1, 2] : [3, 4, 5, 6, 7, 8];
+
+  const pSummer = summerIndices.map(i => prec[i]);
+  const pWinter = winterIndices.map(i => prec[i]);
+  const pSumTot = pSummer.reduce((a, b) => a + b, 0);
+  const pWinTot = pWinter.reduce((a, b) => a + b, 0);
+  const pSumMin = Math.min(...pSummer);
+  const pWinMin = Math.min(...pWinter);
+  const pSumMax = Math.max(...pSummer);
+  const pWinMax = Math.max(...pWinter);
+
+  // Aridity threshold P_threshold (mm)
+  let pThreshold;
+  if (pSumTot >= 0.70 * pAnn) {
+    pThreshold = 20 * tMean + 280;
+  } else if (pWinTot >= 0.70 * pAnn) {
+    pThreshold = 20 * tMean;
+  } else {
+    pThreshold = 20 * tMean + 140;
+  }
+
+  // 1. Group B: Arid / Semi-arid
+  if (pAnn < pThreshold) {
+    const isDesert = pAnn < pThreshold / 2;
+    const isHot = tMean >= 18;
+    if (isDesert) return isHot ? "BWh" : "BWk";
+    return isHot ? "BSh" : "BSk";
+  }
+
+  // 2. Group A: Tropical (coldest month >= 18 C)
+  if (tMin >= 18) {
+    const pDry = Math.min(...prec);
+    if (pDry >= 60) return "Af";
+    if (pAnn >= 25 * (100 - pDry)) return "Am";
+    return pSumTot < pWinTot ? "As" : "Aw";
+  }
+
+  // 3. Group E: Polar (warmest month < 10 C)
+  if (tMax < 10) {
+    return tMax > 0 ? "ET" : "EF";
+  }
+
+  // Sub-precipitation regime for Group C & D:
+  // 's' = dry summer: pSumMin < 40 and pSumMin < pWinMax / 3
+  // 'w' = dry winter: pWinMin < pSumMax / 10
+  // 'f' = fully humid: neither
+  let subPrec = "f";
+  if (pSumMin < 40 && pSumMin < pWinMax / 3) {
+    subPrec = "s";
+  } else if (pWinMin < pSumMax / 10) {
+    subPrec = "w";
+  }
+
+  // Sub-temperature regime:
+  // 'a' = hot summer: tMax >= 22
+  // 'b' = warm summer: not 'a' and n10 >= 4
+  // 'c' = cool summer: not 'a', not 'b'
+  let subTemp = "c";
+  if (tMax >= 22) {
+    subTemp = "a";
+  } else if (n10 >= 4) {
+    subTemp = "b";
+  }
+
+  // 4. Group C: Temperate (-3 < tMin < 18 and tMax >= 10)
+  if (tMin > -3) {
+    return `C${subPrec}${subTemp}`;
+  }
+
+  // 5. Group D: Continental (tMin <= -3 and tMax >= 10)
+  if (tMin <= -38) subTemp = "d";
+  return `D${subPrec}${subTemp}`;
+}
+
 // Maximum equilibrium soil depth (cm) supported by hillslope slope angle.
 // Slope-only heuristic (Saulnier et al. 1997-style depth-slope decay with the
 // critical-slope form of Roering et al. 1999, who fitted Sc ~ 1.2 for
@@ -342,7 +470,7 @@ export function aggregateSoilProfile(layers, targetDepthCm = 100) {
 }
 
 // Aggregate Open-Meteo daily arrays into monthly climate normals.
-export function aggregateClimate(daily) {
+export function aggregateClimate(daily, lat = null) {
   if (!daily?.time?.length) throw new Error("incomplete climate series (no daily records)");
   const sum = Array(12).fill(0), n = Array(12).fill(0);
   const tminSum = Array(12).fill(0), precSum = Array(12).fill(0), et0Sum = Array(12).fill(0);
@@ -372,6 +500,8 @@ export function aggregateClimate(daily) {
   const annualET0 = et0 ? et0.reduce((a, b) => a + b, 0) : null;
   const waterBalance = annualET0 != null ? annualRain - annualET0 : null;
   const ai = annualET0 != null && annualET0 > 0 ? annualRain / annualET0 : null;
+  const effectiveLat = lat ?? daily.latitude ?? null;
+  const koppen = koppenGeigerClass(tavg, prec, effectiveLat);
   const meanOf = arr => {
     const v = (arr ?? []).filter(x => x != null);
     return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
@@ -385,6 +515,7 @@ export function aggregateClimate(daily) {
     waterBalance,
     ai,
     aridity: aridityClass(ai),
+    koppen,
     meanTemp: tavg.reduce((a, b) => a + b, 0) / 12,
     rad: radMJ == null ? null : radMJ / 3.6, // kWh/m2/day
     rh: meanOf(daily.relative_humidity_2m_mean),

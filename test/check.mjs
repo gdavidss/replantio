@@ -1,7 +1,7 @@
 // Self-check for the scoring and growth engines. Run: node test/check.mjs
 import assert from "node:assert";
 import { readFileSync } from "node:fs";
-import { trap, daylength, slopeSolarFactor, monthlySlopeSolarFactors, monthlyFlatInsolation, maxSoilDepthCm, scorePerennialRain, SLOPE_FLAT_DEG, SLOPE_MAX_DEG, MAX_SLOPE_DRAIN_FACTOR, scoreSpecies, aggregateClimate, grade, aridityClass, usdaTextureClass, faoTextureCategory, saxtonRawlsHydrology, aggregateSoilProfile, normalizeSearch } from "../scoring.js";
+import { trap, daylength, slopeSolarFactor, monthlySlopeSolarFactors, monthlyFlatInsolation, maxSoilDepthCm, scorePerennialRain, SLOPE_FLAT_DEG, SLOPE_MAX_DEG, MAX_SLOPE_DRAIN_FACTOR, scoreSpecies, aggregateClimate, grade, aridityClass, koppenGeigerClass, KOPPEN_DESCRIPTIONS, usdaTextureClass, faoTextureCategory, saxtonRawlsHydrology, aggregateSoilProfile, normalizeSearch } from "../scoring.js";
 import { CLASSES, height, dbhCm, co2eKgPerTree, crownDiameterM, crownDisplayM, standDisplay, maturityYears } from "../growth.js";
 
 const species = JSON.parse(readFileSync(new URL("../data/species.json", import.meta.url)));
@@ -578,7 +578,18 @@ assert.equal(normalizeSearch("İNCİR"), "incir");
 assert.equal(normalizeSearch("İSTANBUL"), "istanbul");
 assert.equal(normalizeSearch("IPE"), "ipe");
 
+// --- Köppen-Geiger climate classification (Peel et al. 2007)
+assert.equal(koppenGeigerClass(berlin.tavg, berlin.prec, berlin.lat), "Cfb", "Berlin is Cfb (Oceanic / Marine west coast)");
+assert.equal(koppenGeigerClass(sevilleNormals.prec.map((_, i) => [11.0, 12.5, 15.6, 17.8, 21.8, 26.3, 28.5, 28.3, 24.6, 20.1, 14.8, 11.7][i]), sevilleNormals.prec, 37.4), "Csa", "Seville is Csa (Hot-summer Mediterranean)");
+assert.equal(koppenGeigerClass([0.2, 1.8, 6.2, 11.5, 16.4, 20.8, 24.2, 23.9, 19.2, 13.2, 6.8, 2.1], konyaNormals.prec, 37.8), "BSk", "Konya is BSk (Cold semi-arid / steppe)");
+assert.equal(koppenGeigerClass(giresun.tavg, giresun.prec, giresun.lat), "Cfb", "Giresun slope fixture is Cfb (Oceanic / Marine Pontic)");
+assert.equal(koppenGeigerClass(winnipeg.tavg, winnipeg.prec, winnipeg.lat), "Dfb", "Winnipeg is Dfb (Warm-summer humid continental)");
+assert.equal(koppenGeigerClass(saoPaulo.tavg, saoPaulo.prec, saoPaulo.lat), "Cfa", "São Paulo is Cfa/Cwa (Subtropical highland)");
+assert.equal(koppenGeigerClass(null, null), null);
+assert.equal(koppenGeigerClass([1, 2], [3, 4]), null);
+
 console.log("all checks passed");
 console.log(`  oak@Berlin ${qrBerlin.score.toFixed(2)} | euc@Berlin ${egBerlin.score.toFixed(2)} | euc@SP ${egSP.score.toFixed(2)}`);
 console.log(`  euc CO2e(10y) ${eucCo2.toFixed(0)} kg | oak CO2e(10y) ${co2eKgPerTree(oakSp, 10).toFixed(1)} kg`);
 console.log(`  AI: Konya ${konyaAI.toFixed(2)} (${aridityClass(konyaAI)}) | Seville ${sevilleAI.toFixed(2)} (${aridityClass(sevilleAI)}) | Hamburg ${hamburgAI.toFixed(2)} (${aridityClass(hamburgAI)}) | Rize ${rizeAI.toFixed(2)} (${aridityClass(rizeAI)})`);
+console.log(`  Köppen: Berlin ${koppenGeigerClass(berlin.tavg, berlin.prec, berlin.lat)} | Seville ${koppenGeigerClass([11.0, 12.5, 15.6, 17.8, 21.8, 26.3, 28.5, 28.3, 24.6, 20.1, 14.8, 11.7], sevilleNormals.prec, 37.4)} | Konya ${koppenGeigerClass([0.2, 1.8, 6.2, 11.5, 16.4, 20.8, 24.2, 23.9, 19.2, 13.2, 6.8, 2.1], konyaNormals.prec, 37.8)} | Winnipeg ${koppenGeigerClass(winnipeg.tavg, winnipeg.prec, winnipeg.lat)}`);
