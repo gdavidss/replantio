@@ -134,6 +134,147 @@ export function aridityClass(ai) {
   return "Humid";
 }
 
+// ---------------------------------------------------------------------------
+// Köppen-Geiger Climate Classification (Peel, Finlayson & McMahon 2007)
+// Hydrol. Earth Syst. Sci., 11, 1633–1644.
+// Deterministic 3-letter bioclimatic zoning from monthly temperature & rain normals.
+// ---------------------------------------------------------------------------
+export const KOPPEN_DESCRIPTIONS = {
+  Af: "Tropical rainforest",
+  Am: "Tropical monsoon",
+  Aw: "Tropical savanna (dry winter)",
+  BWh: "Hot desert",
+  BWk: "Cold desert",
+  BSh: "Hot semi-arid",
+  BSk: "Cold semi-arid (steppe)",
+  Csa: "Hot-summer Mediterranean",
+  Csb: "Warm-summer Mediterranean",
+  Csc: "Cold-summer Mediterranean",
+  Cfa: "Humid subtropical",
+  Cfb: "Oceanic (temperate marine)",
+  Cfc: "Subpolar oceanic",
+  Cwa: "Monsoon-influenced humid subtropical",
+  Cwb: "Subtropical highland",
+  Cwc: "Cold subtropical highland",
+  Dsa: "Hot dry-summer continental",
+  Dsb: "Warm dry-summer continental",
+  Dsc: "Dry-summer subarctic",
+  Dsd: "Extremely cold dry-summer subarctic",
+  Dfa: "Hot-summer humid continental",
+  Dfb: "Warm-summer humid continental",
+  Dfc: "Subarctic",
+  Dfd: "Extremely cold subarctic",
+  Dwa: "Monsoon-influenced hot-summer continental",
+  Dwb: "Monsoon-influenced warm-summer continental",
+  Dwc: "Monsoon-influenced subarctic",
+  Dwd: "Monsoon-influenced extremely cold subarctic",
+  ET: "Tundra",
+  EF: "Ice cap / perpetual frost",
+};
+
+export function koppenGeigerClass(tavg, prec) {
+  if (!Array.isArray(tavg) || tavg.length !== 12 || !Array.isArray(prec) || prec.length !== 12) return null;
+  if (tavg.some(t => t == null || !Number.isFinite(t)) || prec.some(p => p == null || !Number.isFinite(p))) return null;
+
+  const tMean = tavg.reduce((a, b) => a + b, 0) / 12;
+  const pAnn = prec.reduce((a, b) => a + b, 0);
+  const tMax = Math.max(...tavg);
+  const tMin = Math.min(...tavg);
+  const n10 = tavg.filter(t => t >= 10).length;
+
+  // Peel's summer is WARMTH-based, not latitude-based: "the warmer six month
+  // period of ONDJFM and AMJJAS" (Peel 2007, Table 1 footnote; their
+  // Ethiopian-highlands passage shows it can differ from the hemisphere
+  // default). Selecting by temperature also removes the latitude parameter
+  // the app never reliably supplied: with the lat-based version every
+  // Southern-Hemisphere site was classified as Northern (Brasília read As
+  // instead of Aw; Perth BSh instead of Csa).
+  const AMJJAS = [3, 4, 5, 6, 7, 8], ONDJFM = [9, 10, 11, 0, 1, 2];
+  const halfMean = idx => idx.reduce((a, i) => a + tavg[i], 0) / 6;
+  const summerIndices = halfMean(AMJJAS) >= halfMean(ONDJFM) ? AMJJAS : ONDJFM;
+  const winterIndices = summerIndices === AMJJAS ? ONDJFM : AMJJAS;
+
+  const pSummer = summerIndices.map(i => prec[i]);
+  const pWinter = winterIndices.map(i => prec[i]);
+  const pSumTot = pSummer.reduce((a, b) => a + b, 0);
+  const pWinTot = pWinter.reduce((a, b) => a + b, 0);
+  const pSumMin = Math.min(...pSummer);
+  const pWinMin = Math.min(...pWinter);
+  const pSumMax = Math.max(...pSummer);
+  const pWinMax = Math.max(...pWinter);
+
+  // Aridity threshold P_threshold (mm)
+  let pThreshold;
+  if (pSumTot >= 0.70 * pAnn) {
+    pThreshold = 20 * tMean + 280;
+  } else if (pWinTot >= 0.70 * pAnn) {
+    pThreshold = 20 * tMean;
+  } else {
+    pThreshold = 20 * tMean + 140;
+  }
+
+  // 1. Group B: Arid / Semi-arid
+  if (pAnn < pThreshold) {
+    const isDesert = pAnn < pThreshold / 2;
+    const isHot = tMean >= 18;
+    if (isDesert) return isHot ? "BWh" : "BWk";
+    return isHot ? "BSh" : "BSk";
+  }
+
+  // 2. Group A: Tropical (coldest month >= 18 C). Peel 2007 has exactly
+  // three tropical types (Af, Am, Aw); "As" is not one of the paper's 30
+  // classes, so everything drier than Am is Aw.
+  if (tMin >= 18) {
+    const pDry = Math.min(...prec);
+    if (pDry >= 60) return "Af";
+    if (pAnn >= 25 * (100 - pDry)) return "Am";
+    return "Aw";
+  }
+
+  // 3. Group E: Polar (warmest month < 10 C)
+  if (tMax < 10) {
+    return tMax > 0 ? "ET" : "EF";
+  }
+
+  // Sub-precipitation regime for Group C & D:
+  // 's' = dry summer: pSumMin < 40 and pSumMin < pWinMax / 3
+  // 'w' = dry winter: pWinMin < pSumMax / 10
+  // 'f' = fully humid: neither
+  let subPrec = "f";
+  const dryS = pSumMin < 40 && pSumMin < pWinMax / 3;
+  const dryW = pWinMin < pSumMax / 10;
+  // Peel p.1637: when both dry-summer and dry-winter criteria hold, the
+  // season receiving more precipitation decides (w if summer wetter than
+  // winter). Unconditional s-precedence fails the paper's own Herberton
+  // worked example (Table 2), which must read Cwa.
+  if (dryS && dryW) subPrec = pSumTot > pWinTot ? "w" : "s";
+  else if (dryS) subPrec = "s";
+  else if (dryW) subPrec = "w";
+
+  // Sub-temperature regime:
+  // 'a' = hot summer: tMax >= 22
+  // 'b' = warm summer: not 'a' and n10 >= 4
+  // 'c' = cool summer: not 'a', not 'b'
+  let subTemp = "c";
+  if (tMax >= 22) {
+    subTemp = "a";
+  } else if (n10 >= 4) {
+    subTemp = "b";
+  }
+
+  // 4. Group C: Temperate (0 < tMin < 18 and tMax >= 10). Peel 2007 follows
+  // Russell (1931): coldest month > 0 C, explicitly NOT Koppen's -3 C
+  // (p.1635); the UI cites Peel, so the boundary must match the citation.
+  if (tMin > 0) {
+    return `C${subPrec}${subTemp}`;
+  }
+
+  // 5. Group D: Continental (tMin <= 0 and tMax >= 10);
+  // 'd' only replaces 'c' (Peel: "Not (a or b) & Tcold < -38")
+  if (subTemp === "c" && tMin < -38) subTemp = "d";
+  return `D${subPrec}${subTemp}`;
+}
+
 // Maximum equilibrium soil depth (cm) supported by hillslope slope angle.
 // Slope-only heuristic (Saulnier et al. 1997-style depth-slope decay with the
 // critical-slope form of Roering et al. 1999, who fitted Sc ~ 1.2 for
@@ -372,6 +513,7 @@ export function aggregateClimate(daily) {
   const annualET0 = et0 ? et0.reduce((a, b) => a + b, 0) : null;
   const waterBalance = annualET0 != null ? annualRain - annualET0 : null;
   const ai = annualET0 != null && annualET0 > 0 ? annualRain / annualET0 : null;
+  const koppen = koppenGeigerClass(tavg, prec);
   const meanOf = arr => {
     const v = (arr ?? []).filter(x => x != null);
     return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
@@ -385,6 +527,7 @@ export function aggregateClimate(daily) {
     waterBalance,
     ai,
     aridity: aridityClass(ai),
+    koppen,
     meanTemp: tavg.reduce((a, b) => a + b, 0) / 12,
     rad: radMJ == null ? null : radMJ / 3.6, // kWh/m2/day
     rh: meanOf(daily.relative_humidity_2m_mean),
