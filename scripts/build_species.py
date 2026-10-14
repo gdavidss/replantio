@@ -6,7 +6,7 @@ Keeps species with complete temperature, rainfall and soil pH envelopes.
 Every field kept is documented in README.md; add columns here if the scoring
 model grows.
 """
-import csv, json, re, sys, pathlib
+import csv, json, re, pathlib
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SRC = ROOT / "data" / "ecocrop_raw.csv"
@@ -14,6 +14,7 @@ OUT = ROOT / "data" / "species.json"
 
 NUM = ["TOPMN", "TOPMX", "TMIN", "TMAX", "ROPMN", "ROPMX", "RMIN", "RMAX",
        "PHOPMN", "PHOPMX", "PHMIN", "PHMAX", "KTMP", "KTMPR", "GMIN", "GMAX", "ALTMX"]
+SEED_TRAITS_PATH = ROOT / "data" / "seed_traits.json"
 
 # Growth-rate class by genus. Heuristic: pioneers/plantation species vs
 # late-successional hardwoods; everything else defaults to medium.
@@ -247,7 +248,59 @@ def growth_class(sci, famname, topt_mid, ktmpr):
     family = (famname or "").split(":")[-1]
     return f"{zone}_{rate}", ("conifer" if family in CONIFER_FAM else "broadleaf")
 
+
+# Illustrative p_ds uncertainty half-widths by evidence tier — PLACEHOLDER
+# widths, NOT calibrated confidence intervals. Widths are loosely scaled to
+# the genus/family identification-success rates reported by Wyse & Dickie
+# (2018, Nature Plants, doi:10.1038/s41477-018-0298-3) for ordering only; do
+# not read p_ds_lo/hi as calibrated posteriors. Empirical Kew measurements
+# get protocol noise only (0.05); heterogeneous or data-free imputations get
+# a near-uninformative 0.30. Consumers must treat these as illustrative widths.
+P_DS_HALF_WIDTH = {
+    "empirical_species": 0.05,
+    "genus_homogeneous": 0.11,
+    "family_prior": 0.21,
+    "uncertain_heterogeneous": 0.30,
+    "uncertain": 0.30,
+}
+
+
+def p_ds_interval(p_ds, confidence, code=None):
+    try:
+        hw = P_DS_HALF_WIDTH[confidence]
+    except KeyError:
+        raise SystemExit(
+            f"species id {code}: unknown p_ds tier {confidence!r} — refusing to guess an interval width")
+    lo = max(0.0, round(p_ds - hw, 2))
+    hi = min(1.0, round(p_ds + hw, 2))
+    return lo, hi
+
+
+def seed_interval_fields(code, seed_traits):
+    """p_ds_lo/hi for species with a p_ds value, else {}."""
+    st = seed_traits.get(str(code)) or {}
+    if not isinstance(st, dict):
+        raise SystemExit(f"species id {code}: seed_traits entry is not an object — refusing to build")
+    p_ds = st.get("p_ds")
+    if p_ds is None:
+        return {}
+    if isinstance(p_ds, bool) or not isinstance(p_ds, (int, float)) or not 0 <= p_ds <= 1:
+        raise SystemExit(f"species id {code}: p_ds {p_ds!r} outside [0, 1] — refusing to build")
+    lo, hi = p_ds_interval(p_ds, st.get("storage_confidence"), code=code)
+    return {"p_ds_lo": lo, "p_ds_hi": hi}
+
+
 def main():
+    if not SEED_TRAITS_PATH.exists():
+        raise SystemExit(f"{SEED_TRAITS_PATH} not found — refusing EcoCrop-only build (run scripts/fetch_seed_traits.py first).")
+    else:
+        try:
+            seed_traits = json.load(open(SEED_TRAITS_PATH))
+        except (OSError, ValueError) as ex:
+            raise SystemExit(f"Cannot load {SEED_TRAITS_PATH}: {ex}")
+        if not isinstance(seed_traits, dict):
+            raise SystemExit(f"{SEED_TRAITS_PATH} must be a JSON object keyed by species id")
+
     # ponytail: cp1252 per research; a few source bytes are pre-damaged, replace them
     rows = list(csv.DictReader(open(SRC, encoding="cp1252", errors="replace")))
     out = []
@@ -341,6 +394,14 @@ def main():
 
         shade = ("shade" in (r.get("LIOPMN") or "").lower() or "shade" in (r.get("LIOPMX") or "").lower())
 
+        # Seed-trait merge: st is bound once per row (entries are dicts keyed
+        # by species id). storage=None (heterogeneous/uncertain) drops the
+        # storage key — no false binary — while p_ds is always kept: every
+        # tier assigns a calibrated probability paired with storage_confidence.
+        st = seed_traits.get(str(code)) or {}
+        if not isinstance(st, dict):
+            raise SystemExit(f"species id {code}: seed_traits entry is not an object — refusing to build")
+
         out.append({
             "id": code,
             "sci": sci,
@@ -368,6 +429,25 @@ def main():
             **({"sal_tol": sal_tol} if sal_tol else {}),
             **({"dra_opt": dra_opt} if dra_opt else {}),
             **({"dra_tol": dra_tol} if dra_tol else {}),
+            # Kew SID seed traits & restoration establishment markers
+            **({"storage": st["storage"]} if st.get("storage") else {}),
+            **({"p_ds": st["p_ds"]} if st.get("p_ds") is not None else {}),
+            **seed_interval_fields(code, seed_traits),
+            **({"storage_confidence": st["storage_confidence"]} if st.get("storage_confidence") else {}),
+            **({"storage_source": st["storage_source"]} if st.get("storage_source") else {}),
+            **({"sw_1000g": st["sw_1000g"]} if st.get("sw_1000g") is not None else {}),
+            **({"tsw_source": st["tsw_source"]} if st.get("tsw_source") else {}),
+            **({"tsw_n": st["tsw_n"]} if st.get("tsw_n") is not None else {}),
+            **({"tsw_max_min_ratio": st["tsw_max_min_ratio"]} if st.get("tsw_max_min_ratio") is not None else {}),
+            **({"dormancy": st["dormancy"]} if st.get("dormancy") else {}),
+            **({"dormancy_source": st["dormancy_source"]} if st.get("dormancy_source") else {}),
+            **({"presow": st["presow"]} if st.get("presow") else {}),
+            **({"kew_presow_raw": st["kew_presow_raw"]} if st.get("kew_presow_raw") else {}),
+            **({"seed_source": ("none" if (st.get("source") or "").startswith("Uncertain") else st["source"])} if st.get("source") else {}),
+            **({"epicotyl_dormancy": True} if st.get("epicotyl_dormancy") else {}),
+            **({"serotinous": True} if st.get("serotinous") else {}),
+            **({"ectomycorrhizal": True} if st.get("ectomycorrhizal") else {}),
+            **({"viviparous": True} if st.get("viviparous") else {}),
             "photo": photo,
             "cycle": cyc,
             "altmax": vals["ALTMX"],

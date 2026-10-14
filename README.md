@@ -122,6 +122,72 @@ optimal range (triangular membership). Missing data never silently zeroes or pas
 species: unknown factors show "no data" and stay out of the product, with the one
 deliberate exception of the tropical frost-tender default above.
 
+## Establishment advice (seed vs seedling)
+
+Each card also answers the follow-up question: sow seed directly, or plant
+nursery-raised seedlings? The answer comes from `establishmentStrategy()` in
+`scoring.js`, a rule set kept deliberately separate from the suitability score
+above (a well-suited species can still be a poor direct-seeding candidate).
+
+- **Categories, not scores.** Outcomes are `direct seeding`, `seedling`, or
+  `both` (conditional), each with an explicit `high / medium / low` confidence.
+  There is intentionally no 0–1 feasibility number: mean field establishment
+  from direct seeding is only ~11% (Ceccon et al. 2016), so any precision
+  beyond category + confidence would be false precision. (Ceccon et al. 2016,
+  Land Degrad. Dev., doi:10.1002/ldr.2421: n=89 species, success p=0.114.)
+- **What drives it.** Life form (herbs/grasses seed directly), Kew SID seed
+  storage physiology and 1,000-seed weight, Baskin & Baskin dormancy classes
+  with matching pre-sowing treatments, and the site's UNEP aridity class
+  (hyper-arid < 0.05, arid < 0.20, semi-arid 0.20–0.50, dry sub-humid
+  0.50–0.65) plus its seasonal moisture window for sowing timing.
+  Dormancy falls back through combinational/MPD genus rules → Kew presow
+  cues → genus/family rules → lifeform default (family cues outrank the herb
+  default, so herbaceous legumes read PY, not ND); genus rules precede Kew
+  cues because Kew rows often record only the cold half of combinational
+  dormancy. Provenance is explicitly recorded in `dormancy_source`
+  (`Kew SID (empirical presow)`, `taxon_prior` / `genus_prior` /
+  `family_prior (all Baskin & Baskin)`, `lifeform_heuristic (herb/grass | default)`).
+- **Uncertainty is data, not decoration.** Every `p_ds` carries an interval
+  (`p_ds_lo/hi`) whose width mirrors the evidence tier: ±0.05 for direct Kew
+  measurements (`empirical_species`), ±0.11 for genus consensus (`genus_homogeneous`),
+  and ±0.30 for heterogeneous or unassigned taxa (`uncertain_heterogeneous`, `uncertain`),
+  with `family_prior` mapped at ±0.21. Widths are loosely scaled to the
+  genus/family identification-success rates reported by Wyse & Dickie
+  (2018, Nature Plants) — illustrative, not calibrated posteriors. Thin
+  evidence caps advice at low confidence, read off the declared evidence
+  flags (heterogeneous / uncertain taxa never advise above low, except on
+  the water-driven climate gates and lifeform shortcuts that return before
+  the cap) — no interval arithmetic.
+- **Sowing window with months.** Each card names the favorable window
+  (e.g. Oct–Dec): the longest run of months warm enough to germinate
+  (≥4 °C) with P/ET₀ ≥ 0.5, viable when it spans ≥3 months and accumulates
+  enough moisture-time (Bradford 1990 hydrothermal-time concept).
+- **Continuous seed-size effect.** No fixed mass cutoffs: a logistic reserve
+  advantage (0 at dust seeds → 1 at large nuts, midpoint ~55 g/1000)
+  replaces the old 2 g / 1500 g / 5 g cliffs at two code-constructed anchors
+  (0.2 low-reserve boundary, 0.5 midpoint) that preserve prior intent and are
+  not empirical cutoffs, following Westoby's reserve effect and Moles &
+  Westoby (2004).
+- **Honest limits.** Species selection uses a climate-agnostic prior (direct
+  seeding averages ~11% regardless of climate in Ceccon's meta-analysis);
+  climate matters for *when* to sow, not *whether the species qualifies*.
+  Uncertain taxa resolve to nursery seedlings with low confidence rather than
+  a guessed probability. Boreal, serotiny, fire-smoke, mangrove-propagule,
+  epicotyl-chilling and false-break rules are parked for
+  a follow-up until their citations are verified.
+- **CSV codes are stable English; the UI localizes.** The export columns
+  `establishment_method` (`direct_seeding` / `seedling` / `both`),
+  `establishment_confidence` (`high` / `medium` / `low`) and `sowing_window`
+  (English month abbreviations, e.g. `Oct–Dec`) carry the same values the
+  cards show, untranslated for analysis. They describe the **current site
+  only**, not the 2040s outlook (the strategy is never recomputed for the
+  projection; the CSV `#` meta line says so, format v2).
+- **Payload honesty.** `data/species.json` (~675KB of trait fields for ~2k
+  species) dominates first render; it loads async beside the optional layers
+  so map interaction never blocks on it (load timed via
+  `console.time("species.json")` in `app.js`). Backlog: per-language dynamic
+  import / trait-field splitting to cut the initial payload.
+
 Eight EcoCrop rows with corrupt envelopes (inverted ranges, e.g. Faidherbia albida
 with TMAX < TOPMX) are dropped at build time; they would be unscorable everywhere.
 Topsoil pH is the 0-15 cm thickness-weighted mean of the two SoilGrids layers.

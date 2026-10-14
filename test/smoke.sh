@@ -7,7 +7,7 @@ DIR="$(cd "$(dirname "$0")/.." && pwd)"
 CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 
 if ! curl -s -o /dev/null "http://localhost:$PORT/index.html"; then
-  (cd "$DIR" && python3 -m http.server "$PORT" >/dev/null 2>&1 &)
+  python3 -m http.server "$PORT" --directory "$DIR" >/dev/null 2>&1 &
   SERVER_PID=$!
   trap 'kill $SERVER_PID 2>/dev/null' EXIT
   sleep 1

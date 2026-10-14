@@ -1,7 +1,7 @@
 // Self-check for the scoring and growth engines. Run: node test/check.mjs
 import assert from "node:assert";
 import { readFileSync } from "node:fs";
-import { trap, daylength, slopeSolarFactor, monthlySlopeSolarFactors, monthlyFlatInsolation, maxSoilDepthCm, scorePerennialRain, SLOPE_FLAT_DEG, SLOPE_MAX_DEG, MAX_SLOPE_DRAIN_FACTOR, scoreSpecies, aggregateClimate, grade, aridityClass, koppenGeigerClass, KOPPEN_DESCRIPTIONS, usdaTextureClass, faoTextureCategory, saxtonRawlsHydrology, aggregateSoilProfile, normalizeSearch } from "../scoring.js";
+import { trap, daylength, slopeSolarFactor, monthlySlopeSolarFactors, monthlyFlatInsolation, maxSoilDepthCm, scorePerennialRain, SLOPE_FLAT_DEG, SLOPE_MAX_DEG, MAX_SLOPE_DRAIN_FACTOR, scoreSpecies, aggregateClimate, grade, aridityClass, koppenGeigerClass, KOPPEN_DESCRIPTIONS, usdaTextureClass, faoTextureCategory, saxtonRawlsHydrology, aggregateSoilProfile, normalizeSearch, establishmentStrategy, seedReserveAdvantage, sowingWindow, windowLabel } from "../scoring.js";
 import { CLASSES, height, dbhCm, co2eKgPerTree, crownDiameterM, crownDisplayM, standDisplay, maturityYears } from "../growth.js";
 
 const species = JSON.parse(readFileSync(new URL("../data/species.json", import.meta.url)));
@@ -603,6 +603,120 @@ assert.equal(koppenGeigerClass(null, null), null);
   assert.equal(koppenGeigerClass(bothDry.tavg, bothDry.prec), "Cwa", "both-dry tie-break goes to w when summer is wetter");
 }
 assert.equal(koppenGeigerClass([1, 2], [3, 4]), null);
+
+// --- establishment strategy (direct seeding vs seedling planting) tests
+// 1. Grass/herb species -> direct seeding
+const grassStrat = establishmentStrategy({ porte: "grass" });
+assert.equal(grassStrat.method, "direct_seeding");
+assert.equal(grassStrat.directViable, true);
+assert.equal(grassStrat.seedlingViable, false);
+assert.equal(grassStrat.confidence, "high");
+
+const herbStrat = establishmentStrategy({ porte: "herb", annual: true });
+assert.equal(herbStrat.method, "direct_seeding");
+assert.equal(herbStrat.directViable, true);
+
+// 2. Vine -> both direct and cuttings
+const vineStrat = establishmentStrategy({ porte: "vine" });
+assert.equal(vineStrat.method, "both");
+assert.equal(vineStrat.directViable, true);
+assert.equal(vineStrat.seedlingViable, true);
+
+// 3. Tree: Fast-growing legume (Fabaceae / pioneer) on humid site (Hamburg AI=1.15) -> both viable (Muvuca).
+// Pioneer status requires evidence: the fixture carries empirical orthodox
+// storage like real Fabaceae records (data-free taxa resolve to seedlings).
+const legumeSp = { porte: "tree", tree: true, family: "Fabaceae", gclass: "tropical_fast", storage: "orthodox", sw_1000g: 700.0 };
+const humidLegumeStrat = establishmentStrategy(legumeSp, { ai: 1.15, annualRain: 1200 });
+assert.equal(humidLegumeStrat.method, "both");
+assert.equal(humidLegumeStrat.directViable, true);
+assert.equal(humidLegumeStrat.seedlingViable, true);
+assert.equal(humidLegumeStrat.labelKey, "Nursery seedlings · Direct seeding viable");
+
+// 4. Tree: Same fast-growing legume on dry steppe (Konya AI=0.24, short wet window) -> conditional direct seeding with zaï micro-catchments
+const aridLegumeStrat = establishmentStrategy(legumeSp, { ai: 0.24, annualRain: 320 });
+assert.equal(aridLegumeStrat.method, "both");
+assert.equal(aridLegumeStrat.directViable, true);
+assert.equal(aridLegumeStrat.labelKey, "Nursery seedlings (preferred) · Direct seeding conditional");
+
+// 5. Tree: Climax non-nut tree on dry steppe (Fraxinus / Oleaceae) -> nursery seedling standard
+// (hardwood without pioneer/reserve adaptations requires container seedlings in drylands)
+const aridAshStrat = establishmentStrategy({ porte: "tree", tree: true, family: "Oleaceae", gclass: "temperate_slow" }, { ai: 0.24, annualRain: 320 });
+assert.equal(aridAshStrat.method, "seedling");
+assert.equal(aridAshStrat.directViable, false);
+assert.equal(aridAshStrat.labelKey, "Nursery seedlings (standard)");
+assert.equal(aridAshStrat.confidence, "medium");
+assert(!("dsfi" in aridAshStrat));
+
+// 5b. Monotonicity invariant: irrigation must never degrade direct seeding viability
+for (const testSp of [legumeSp, { porte: "tree", tree: true, family: "Oleaceae", gclass: "temperate_slow" }, { porte: "grass" }, { porte: "vine" }]) {
+  const rainfed = establishmentStrategy(testSp, { ai: 0.24, annualRain: 320 });
+  const irrigated = establishmentStrategy(testSp, { ai: 0.24, annualRain: 320, irrigated: true });
+  assert.ok(!rainfed.directViable || irrigated.directViable, `Irrigation must not degrade direct viability for ${testSp.family || testSp.porte}`);
+}
+
+// 6. Tree: Large-seeded nut tree (Oak / Quercus / Fagaceae) -> both viable via buried acorn dibbling
+const oakStrat = establishmentStrategy({ porte: "tree", tree: true, family: "Fagaceae", storage: "recalcitrant", sw_1000g: 3497.0 }, { ai: 1.15 });
+assert.equal(oakStrat.method, "both");
+assert.equal(oakStrat.directViable, true);
+assert.equal(oakStrat.labelKey, "Nursery seedlings · Direct seeding viable (buried)");
+
+// 7. Tree: Climax hardwood (Ash / Oleaceae) on humid site -> nursery seedling standard
+const ashStrat = establishmentStrategy({ porte: "tree", tree: true, family: "Oleaceae", gclass: "temperate_slow" }, { ai: 1.15 });
+assert.equal(ashStrat.method, "seedling");
+assert.equal(ashStrat.directViable, false);
+assert.equal(ashStrat.labelKey, "Nursery seedlings (standard)");
+
+// 8. Tree: Micro-seeded species (Eucalyptus / Myrtaceae, 1.4g/1000 seeds) -> both viable with pelleting (SET)
+const eucStrat = establishmentStrategy({ porte: "tree", tree: true, family: "Myrtaceae", storage: "orthodox", sw_1000g: 1.41 }, { ai: 1.15 });
+assert.equal(eucStrat.method, "both");
+assert.equal(eucStrat.directViable, true);
+assert.equal(eucStrat.labelKey, "Nursery seedlings (preferred) · Direct seeding conditional (weed-free SET)");
+
+// 9. Phase-2: continuous seed-reserve advantage anchors (legacy gates land on round values)
+close(seedReserveAdvantage(2), 0.10, 0.005, "advantage at 2 g/1000");
+close(seedReserveAdvantage(1500), 0.90, 0.005, "advantage at 1500 g/1000");
+assert.equal(seedReserveAdvantage(null), null);
+assert.ok(seedReserveAdvantage(2) < seedReserveAdvantage(100) && seedReserveAdvantage(100) < seedReserveAdvantage(1500), "advantage is monotonic");
+close(seedReserveAdvantage(55), 0.50, 0.01, "midpoint near 55 g/1000");
+
+// 10. Phase-2: hydrothermal sowing window (Seville: Oct-Dec run, viable)
+const sevilleWin = sowingWindow({ ai: 0.32, prec: [39.1, 31.3, 79.5, 51.7, 27.8, 9.7, 1.2, 2.5, 24.1, 87.2, 58.7, 59.9], tavg: [11.0, 12.5, 15.6, 17.8, 21.8, 26.3, 28.5, 28.3, 24.6, 20.1, 14.8, 11.7] });
+assert.equal(sevilleWin.start, 9);
+assert.equal(sevilleWin.length, 3);
+assert.equal(sevilleWin.viable, true);
+assert.equal(windowLabel(sevilleWin), "Oct–Dec");
+// two soaking months are not enough for first-season establishment (duration rule)
+const shortWin = sowingWindow({ ai: 0.5, prec: [0, 0, 0, 0, 0, 0, 0, 0, 0, 200, 200, 0], tavg: Array(12).fill(20) });
+assert.equal(shortWin.viable, false);
+// three marginal months fail the moisture-time rule with ET0 present
+const marginalWin = sowingWindow({ ai: 0.4, prec: [60, 60, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0], tavg: Array(12).fill(20), et0: Array(12).fill(100) });
+assert.equal(marginalWin.length, 3);
+assert.equal(marginalWin.viable, false);
+const strongWin = sowingWindow({ ai: 0.4, prec: [150, 150, 150, 0, 0, 0, 0, 0, 0, 0, 0, 0], tavg: Array(12).fill(20), et0: Array(12).fill(100) });
+assert.equal(strongWin.viable, true);
+// AI-only fallback mapping (UNEP-aligned)
+assert.equal(sowingWindow({ ai: 0.24 }).length, 2);
+assert.equal(sowingWindow({ ai: 0.24 }).viable, false);
+assert.equal(sowingWindow({ ai: 0.8 }).viable, true);
+
+// 11. Thin-evidence flag rule: identical numbers, different declared flags.
+// Uncertain taxa never advise above low confidence, with no interval math.
+const flagUncertain = { porte: "tree", tree: true, family: "Oleaceae", gclass: "temperate_slow", p_ds: 0.35, p_ds_lo: 0.30, p_ds_hi: 0.40, storage_confidence: "uncertain" };
+const flagEmpirical = { porte: "tree", tree: true, family: "Oleaceae", gclass: "temperate_slow", p_ds: 0.35, p_ds_lo: 0.30, p_ds_hi: 0.40, storage_confidence: "empirical_species" };
+assert.equal(establishmentStrategy(flagUncertain, { ai: 1.15 }).confidence, "low");
+assert.equal(establishmentStrategy(flagEmpirical, { ai: 1.15 }).confidence, "medium");
+const uncStrat = establishmentStrategy(flagUncertain, { ai: 1.15 });
+assert(uncStrat.directives.some(d => d.includes("Uncertain seed storage physiology")));
+
+// 12. Recalcitrant old-gate-vs-new-gate equivalence (catalog-wide): the
+// interval-based rule (pDsLo >= 0.80) must agree with the legacy point rule
+// ((pDs >= 0.80) || storage === "recalcitrant") for every catalog record.
+// Any divergence fails loudly with the full list.
+const recalcDiverg = species
+  .filter(sp => ((sp.p_ds_lo >= 0.80) !== ((sp.p_ds >= 0.80) || sp.storage === "recalcitrant")))
+  .map(sp => `${sp.sci} (storage=${sp.storage}, p_ds=${sp.p_ds}, p_ds_lo=${sp.p_ds_lo})`);
+if (recalcDiverg.length) console.error("recalcitrant gate divergence:", recalcDiverg);
+assert.equal(recalcDiverg.length, 0, `old/new recalcitrant gates diverge for ${recalcDiverg.length} species: ${recalcDiverg.join("; ")}`);
 
 console.log("all checks passed");
 console.log(`  oak@Berlin ${qrBerlin.score.toFixed(2)} | euc@Berlin ${egBerlin.score.toFixed(2)} | euc@SP ${egSP.score.toFixed(2)}`);
