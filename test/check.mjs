@@ -440,6 +440,57 @@ assert.equal(scoreSpecies(apricot, { ...malatya, irrigated: true }, { countryNat
 assert.equal(scoreSpecies(hazel, { ...giresun, irrigated: true }, { countryNative: true }).factors.rain, 0.5,
   "irrigation never fixes waterlogging: Giresun stays at the wet-margin demote");
 
+// 2040s outlook site object inherits irrigation behavior:
+const malatya2040 = { ...malatya, tavg: malatya.tavg.map(t => t + 1.8), prec: malatya.prec.map(p => p * 0.9) };
+assert.equal(scoreSpecies(apricot, malatya2040, { countryNative: true }).factors.rain, 0,
+  "rainfed 2040s Malatya apricot stays rain-zero");
+assert.equal(scoreSpecies(apricot, { ...malatya2040, irrigated: true }, { countryNative: true }).factors.rain, 1,
+  "irrigated 2040s Malatya apricot lifts to rain optimum");
+
+// irrigation chip wiring canaries (app.js): the chip is the single source of
+// truth — if any of these break, the 2040s outlook silently desyncs to rainfed
+const appSrc = readFileSync(new URL("../app.js", import.meta.url), "utf8");
+assert(!appSrc.includes("data-ov-irr"), "old irrigation checkbox must be fully removed");
+assert(appSrc.includes("irrigated: current.site.irrigated"), "futureOutlook fsite must carry live irrigation state");
+assert(appSrc.includes("current.fsite.irrigated = site.irrigated"), "rescore must re-sync fsite on irrigation toggle");
+{
+  const clearBlock = appSrc.match(/closest\("\[data-crit-clear\]"\)[\s\S]{0,400}/)?.[0] ?? "";
+  assert(clearBlock.length > 0, "clear-criteria handler must exist");
+  assert(!clearBlock.includes("irrigat"), "clear-criteria must leave irrigation on (site truth, not a view filter)");
+}
+{
+  // pinned delegation order: data-f="irr" is site truth, not a view filter,
+  // so its branch must return before the generic track("filter"). Do not
+  // rename data-f="irr" (CSS + the refocus query depend on it).
+  const clickStart = appSrc.indexOf('content.addEventListener("click"');
+  assert(clickStart !== -1, "click delegation listener must exist");
+  const tail = appSrc.slice(clickStart);
+  const irrIdx = tail.indexOf('dataset.f === "irr"');
+  const filterIdx = tail.indexOf('track("filter",'); // trailing comma: the real call, not the PINNED comment above
+  assert(irrIdx !== -1 && filterIdx !== -1 && irrIdx < filterIdx,
+    'irr branch must stay above track("filter") in the click listener');
+  assert(tail.slice(irrIdx, filterIdx).includes("return;"),
+    'irr branch must return before track("filter")');
+}
+
+// CSV export formula injection sanitization
+{
+  const esc = v => {
+    let s = String(v ?? "");
+    if (/^[\s\t\r\n]*([=+\-@%|\uFF1D\uFF0B\uFF0D\uFF20\uFF5C])/.test(s)) s = "'" + s;
+    return `"${s.replace(/"/g, '""')}"`;
+  };
+  assert.equal(esc("=1+1"), `"'=1+1"`);
+  assert.equal(esc("  @SUM(A1)"), `"'  @SUM(A1)"`);
+  assert.equal(esc("\t-10"), `"'	-10"`);
+  assert.equal(esc("+44"), ` "'+44"`.trim());
+  assert.equal(esc("%cmd%"), `"'%cmd%"`);
+  assert.equal(esc("|pipe"), `"'|pipe"`);
+  assert.equal(esc("\uFF1Dformula"), `"'\uFF1Dformula"`);
+  assert.equal(esc("Quercus"), `"Quercus"`);
+  assert.equal(esc(null), `""`);
+}
+
 // grading bands
 assert.equal(grade(0.9), "Excellent");
 assert.equal(grade(0.5), "Suitable");

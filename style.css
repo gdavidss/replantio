@@ -302,6 +302,7 @@ html, body { margin: 0; height: 100%; background: #0a0d0b; color: var(--text); }
   display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
   margin-top: var(--s5); padding-bottom: 8px;
 }
+.chips-row .opt.on { color: var(--accent); }
 .chips-row .crit-toggle { margin-left: auto; }
 
 /* collapsible sections: "Why these plants?" and "For projects" */
@@ -676,13 +677,12 @@ html, body { margin: 0; height: 100%; background: #0a0d0b; color: var(--text); }
   #radarnav .rn-label { font-size: 12.5px; }
 }
 
-/* site adjustments: two quiet inline controls inside "Why these plants?" */
+/* site adjustment: the measured-pH inline control inside "Why these plants?" (irrigation lives with the result list as a filter chip) */
 .site-adjust {
   display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
   margin: 2px 0 10px; font-size: 12px; color: var(--muted);
 }
-.site-adjust label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
-.site-adjust input[type="checkbox"] { accent-color: var(--accent); }
+.site-adjust label { display: flex; align-items: center; gap: 6px; }
 .site-adjust input[type="number"] {
   width: 58px; padding: 3px 6px; font: inherit; color: var(--text);
   background: rgba(255, 255, 255, 0.05); border: 1px solid var(--line-2); border-radius: 6px;
@@ -758,7 +758,7 @@ html, body { margin: 0; height: 100%; background: #0a0d0b; color: var(--text); }
   }
   .chips-row::-webkit-scrollbar { display: none; }
   .chips-row .opt, .chips-row .crit-toggle {
-    flex: none; min-height: 38px; padding: 0 15px; border-radius: 999px;
+    flex: none; min-height: 44px; padding: 0 15px; border-radius: 999px;
     border: 1px solid var(--line-2); background: rgba(255,255,255,.03);
     font-size: 14px; color: var(--muted); display: inline-flex; align-items: center; white-space: nowrap;
   }
@@ -785,7 +785,6 @@ html, body { margin: 0; height: 100%; background: #0a0d0b; color: var(--text); }
   .fu { min-height: 48px; font-size: 14px; }
   .disc { min-height: 52px; font-size: 12px; }
   .site-adjust { font-size: 14px; gap: 22px; }
-  .site-adjust input[type="checkbox"] { width: 20px; height: 20px; }
   .site-adjust input[type="number"] { width: 72px; height: 38px; font-size: 16px; }
   .readout { grid-template-rows: repeat(12, auto); column-gap: 0; }
   .readout .rd:nth-child(6) { border-top: 1px solid var(--line); }

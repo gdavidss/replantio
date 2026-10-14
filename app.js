@@ -191,6 +191,7 @@ const SHAPE_STYLE = { color: "#55d97c", weight: 1.5, fillOpacity: 0.08, dashArra
 const INACTIVE_STYLE = { color: "#93a096", weight: 1, fillOpacity: 0.03, dashArray: "3 5" };
 let armed = false, verts = [], draft = null, shape = null; // shape = the active area
 const shapes = []; // every analyzed area stays on the map
+let abortCtl = null, current = null; // current = {site, scored, pts, center, ha}
 drawBtn.addEventListener("click", () => armed ? cancelDraw() : arm());
 function arm() {
   armed = true; verts = [];
@@ -213,6 +214,8 @@ function cancelDraw() { disarm(); }
 document.addEventListener("keydown", e => { if (e.key === "Escape" && armed) cancelDraw(); });
 function deleteActiveArea() {
   if (!shape) return;
+  abortCtl?.abort();
+  current = null;
   removeStand(shape);
   removeEditHandles();
   map.removeLayer(shape);
@@ -470,7 +473,6 @@ async function fetchTerrain(c, signal) {
 
 // ---------- analysis ----------
 const panel = $("#panel"), content = $("#panel-content");
-let abortCtl = null, current = null; // current = {site, scored, pts, center, ha}
 
 async function analyze(pts) {
   stopSim();
@@ -486,8 +488,10 @@ async function analyze(pts) {
     current = shape._analysis;
     renderResults();
     loadRowPhotos();
+    if (!current.fsite) futureOutlook(ctl);
     return;
   }
+  current = null;
 
   openPanel(`
     <div class="p-head">
@@ -577,14 +581,44 @@ async function analyze(pts) {
   const evNaturalized = sp => !L3_REGIONS[place?.cc] && !!place?.cc && (NATURALIZED[sp.id] ?? []).includes(place.cc);
   // kept on current so user site adjustments (irrigation, measured pH) can
   // re-run pure scoring without refetching anything
-  const rescore = () => SPECIES
-    .map(sp => ({ sp, ...scoreSpecies(sp, site, { native: evNative(sp), countryNative: evCountry(sp), countryNaturalized: evNaturalized(sp) }) }))
-    .sort((a, b) => (b.score - a.score) || (b.fit - a.fit));
+  const rescore = () => {
+    // Evidence carry-over: rescore builds fresh objects, but row photos are
+    // species-level (safe across analyses) and GBIF counts are area-level
+    // (only valid for the same site object). Without this, every irrigation
+    // toggle vaporises the nearby badges until the next fetch resolves.
+    let prev = null;
+    if (Array.isArray(current?.scored)) {
+      prev = new Map();
+      for (const s of current.scored) prev.set(s.sp.id, s);
+    }
+    const sameSite = prev && current?.site === site;
+    const list = SPECIES
+      .map(sp => {
+        const s = { sp, ...scoreSpecies(sp, site, { native: evNative(sp), countryNative: evCountry(sp), countryNaturalized: evNaturalized(sp) }) };
+        const p = prev?.get(sp.id);
+        if (p) {
+          if (p.photo !== undefined) s.photo = p.photo;
+          if (sameSite && p.gbif !== undefined) s.gbif = p.gbif;
+        }
+        return s;
+      })
+      .sort((a, b) => (b.score - a.score) || (b.fit - a.fit));
+    if (current?.fsite && current?.site === site) {
+      current.fsite.irrigated = site.irrigated;
+      current.fsite.ph = site.ph;
+      for (const s of list) {
+        s.f45 = scoreSpecies(s.sp, current.fsite, { native: evNative(s.sp),
+          countryNative: evCountry(s.sp), countryNaturalized: evNaturalized(s.sp) }).score;
+      }
+    }
+    return list;
+  };
   const scored = rescore();
   step("ls-score");
 
   current = { site, scored, rescore, pts, center: c, ha, filter: "all", habit: "tree", shown: 12,
     cc: place?.cc ?? null, state: place?.state ?? "", city: place?.city ?? "", uf: place?.uf ?? "",
+    evOpts: sp => ({ native: evNative(sp), countryNative: evCountry(sp), countryNaturalized: evNaturalized(sp) }),
     // native-first by default wherever we know the country AND the ranges loaded
     nativeOnly: !!place?.cc && Object.keys(NATIVES).length > 0, critOpen: false };
   if (shape && shape._pts === pts) shape._analysis = current; // session cache per area
@@ -815,17 +849,25 @@ const CRIT_DIMS = () => [
 ];
 
 // guerrilla-mode front controls: one line of chips, the facet browser behind "more filters"
+// Irrigation lives here — not buried in "Why these plants?" — because it
+// rescores the list above the fold: a control that reorders results must sit
+// next to the results, not a scroll away inside a disclosure.
 function chipsMarkup() {
   const habit = current.habit ?? "tree";
   const fam = ["nontree", "shrub", "herb", "grass", "vine"].includes(habit); // any non-tree selection lights the family chip
+  const irr = !!current?.site?.irrigated;
+  const irrTitle = tr("Scored as irrigated: water counts as available up to this species' optimum. Excess rain still applies.").replace(/"/g, "&quot;");
+  const irrLabel = tr("irrigated").replace(/"/g, "&quot;");
+  const irrChip = `<button type="button" class="opt${irr ? " on" : ""}" data-f="irr" data-v="toggle" aria-pressed="${irr ? "true" : "false"}" title="${irrTitle}" aria-label="${irrLabel}"><svg aria-hidden="true" focusable="false" width="11" height="11" viewBox="0 0 24 24" fill="${irr ? "currentColor" : "none"}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px"><path d="M12 2.7s6.5 7.1 6.5 11.3a6.5 6.5 0 0 1-13 0C5.5 9.8 12 2.7 12 2.7z"/></svg>${irrLabel}</button>`;
   const chip = (on, f, v, label, n) =>
-    `<button class="opt${on ? " on" : ""}" data-f="${f}" data-v="${v}"${on ? ' aria-pressed="true"' : ""}${!on && n === 0 ? " disabled" : ""}>${label}${!on && n != null ? `<span class="c">${n}</span>` : ""}</button>`;
+    `<button type="button" class="opt${on ? " on" : ""}" data-f="${f}" data-v="${v}" aria-pressed="${on ? "true" : "false"}"${!on && n === 0 ? " disabled" : ""}>${label}${!on && n != null ? `<span class="c">${n}</span>` : ""}</button>`;
   return `<div class="sp-search"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><input id="sp-search" type="search" placeholder="${tr("Search a species: bean, oak, Quercus...")}" value="${(current.q ?? "").replace(/"/g, "&quot;")}" autocomplete="off" spellcheck="false"></div>
   <div class="chips-row">
     ${current.cc ? chip(current.nativeOnly, "origin", current.nativeOnly ? "all" : "native", tr("native here"), current.nativeOnly ? null : critCount({ nativeOnly: true })) : ""}
     ${chip(habit === "tree", "habit", "tree", tr("trees"), habit === "tree" ? null : critCount({ habit: "tree" }))}
     ${chip(fam, "habit", "nontree", tr("shrubs and herbs"), fam ? null : critCount({ habit: "nontree" }))}
     ${chip(habit === "all", "habit", "all", tr("everything"), habit === "all" ? null : critCount({ habit: "all" }))}
+    ${irrChip}
     <button class="crit-toggle" data-crit-toggle aria-expanded="${current.critOpen ? "true" : "false"}">${tr("more filters")}<i class="car"></i></button>
   </div>`;
 }
@@ -867,12 +909,12 @@ function critMarkup() {
     <div class="k"${d.title ? ` title="${d.title}"` : ""}>${tr(d.label)}</div>
     <div class="opts">${d.opts.map(([v, txt], i) => {
       const on = d.cur === v, c = on ? 0 : critCount(d.over(v));
-      return `<button class="opt${on ? (i ? " on constrained" : " on") : ""}" data-f="${d.key}" data-v="${v}"${on ? ' aria-pressed="true"' : ""}${!on && !c ? " disabled" : ""}>${txt}${on ? "" : `<span class="c">${c}</span>`}</button>`;
+      return `<button type="button" class="opt${on ? (i ? " on constrained" : " on") : ""}" data-f="${d.key}" data-v="${v}" aria-pressed="${on ? "true" : "false"}"${!on && !c ? " disabled" : ""}>${txt}${on ? "" : `<span class="c">${c}</span>`}</button>`;
     }).join("")}</div></div>`).join("");
 
   return `${chipsMarkup()}
     <div class="crit-panel"${current.critOpen ? "" : " hidden"}>${rows}${
-      critIsDefault() ? "" : `<button class="crit-clear" data-crit-clear>${tr("clear criteria")}</button>`
+      critIsDefault() ? "" : `<button type="button" class="crit-clear" data-crit-clear>${tr("clear criteria")}</button>`
     }</div>`;
 }
 
@@ -915,7 +957,6 @@ function renderResults() {
     <div class="section-h">${tr("Site climate &middot; ERA5 2015&ndash;2024")}</div>
     <div class="site-fig">${climateSvg(site)}</div>
     <div class="site-adjust">
-      <label><input type="checkbox" data-ov-irr${site.irrigated ? " checked" : ""}> ${tr("irrigated")}</label>
       <label>${tr("measured pH")} <input type="number" data-ov-ph min="3" max="10" step="0.1" value="${site.phUser ?? ""}" placeholder="${site.ph != null ? fmt(site.ph, 1) : "–"}"></label>
     </div>
     <div class="readout">
@@ -1034,20 +1075,23 @@ function speciesRow(s, i) {
 
 // site adjustments: mutate the site, re-run pure scoring, re-render. The
 // SoilGrids value is kept in phGrid so clearing the field restores it.
+// (Irrigation moved to the filter chip row: it rescores the list, so it lives
+// with the list. Handled in the .opt[data-f="irr"] click branch below.)
 content.addEventListener("change", e => {
   const site = current?.site;
   if (!site) return;
-  if (e.target.matches("[data-ov-irr]")) {
-    site.irrigated = e.target.checked || undefined;
-  } else if (e.target.matches("[data-ov-ph]")) {
+  if (e.target.matches("[data-ov-ph]")) {
     const v = parseFloat(e.target.value);
     if (site.phGrid === undefined) site.phGrid = site.ph;
     site.phUser = Number.isFinite(v) && v >= 3 && v <= 10 ? Math.round(v * 10) / 10 : null;
     site.ph = site.phUser ?? site.phGrid;
     if (site.phUser == null) delete site.phUser;
   } else return;
+  const wasFocused = document.activeElement === e.target;
   current.scored = current.rescore();
+  current.shown = 12;
   renderResults(); loadRowPhotos();
+  if (wasFocused && !isPhone()) content.querySelector("[data-ov-ph]")?.focus({ preventScroll: true });
   track("site_override", { irrigated: !!site.irrigated, ph: site.phUser ?? undefined });
 });
 
@@ -1087,23 +1131,48 @@ content.addEventListener("click", e => {
     // reset to the analysis defaults, which include native-first
     current.filter = "all"; current.matMax = null; current.crownMin = null; current.habit = "tree";
     current.nativeOnly = !!current.cc && Object.keys(NATIVES).length > 0;
-    current.shown = 12; renderResults(); loadRowPhotos(); return;
+    current.shown = 12; renderResults(); loadRowPhotos();
+    content.querySelector(".chips-row .opt")?.focus({ preventScroll: true });
+    return;
   }
   const opt = e.target.closest(".opt[data-f]");
   if (opt) {
+    if (!current) return;
     const v = opt.dataset.v;
     if (["lmf", "lapp", "lveg"].includes(opt.dataset.f)) {
       current.legal[opt.dataset.f === "lmf" ? "mf" : opt.dataset.f === "lapp" ? "app" : "veg"] = v;
       renderResults(); loadRowPhotos();
       return;
     }
+    if (opt.dataset.f === "irr") {
+      // site truth, not a view filter: toggles dry-side-only irrigation
+      // (scoring.js lifts supply to the species optimum, wet limits untouched),
+      // then re-runs pure scoring in place — no refetch. Tracked as a site
+      // override (continuity with the old checkbox), not as a view filter.
+      // PINNED: keep this branch above track("filter") with its return;
+      // do not rename data-f="irr" (CSS + the refocus query depend on it).
+      const site = current?.site;
+      if (!site) return;
+      site.irrigated = site.irrigated ? undefined : true;
+      current.scored = current.rescore();
+      current.shown = 12; renderResults(); loadRowPhotos();
+      content.querySelector('.opt[data-f="irr"]')?.focus({ preventScroll: true });
+      track("site_override", { irrigated: !!site.irrigated });
+      return;
+    }
     track("filter", { f: opt.dataset.f, v });
+    const inRow = !!opt.closest(".chips-row");
+    const sel = inRow
+      ? (opt.dataset.f === "origin" ? '.chips-row .opt[data-f="origin"]' : `.chips-row .opt[data-f="${opt.dataset.f}"][data-v="${v}"]`)
+      : `.crit-panel .opt[data-f="${opt.dataset.f}"][data-v="${v}"]`;
     if (opt.dataset.f === "habit") { current.habit = v; current.matMax = null; current.crownMin = null; }
     if (opt.dataset.f === "origin") current.nativeOnly = v === "native";
     if (opt.dataset.f === "use") current.filter = v;
     if (opt.dataset.f === "mat") current.matMax = v ? +v : null;
     if (opt.dataset.f === "crown") current.crownMin = v ? +v : null;
-    current.shown = 12; renderResults(); loadRowPhotos(); return;
+    current.shown = 12; renderResults(); loadRowPhotos();
+    content.querySelector(sel)?.focus({ preventScroll: true });
+    return;
   }
   const srcLink = e.target.closest(".getrows a");
   if (srcLink) { // the loop's conversion moment: intent became a store visit
@@ -1974,20 +2043,27 @@ function drawTree(g, x, y, r, tree, conifer) {
 
 // ---------- 2040s outlook: rescore the shortlist on a CMIP6 projection ----------
 async function futureOutlook(ctl) {
+  const target = current;
+  const c = target?.center;
+  if (!c || ctl.signal.aborted) return;
   try {
-    const c = current.center;
     const url = `https://climate-api.open-meteo.com/v1/climate?latitude=${c.lat.toFixed(4)}&longitude=${c.lng.toFixed(4)}` +
       `&start_date=2040-01-01&end_date=2049-12-31&models=MRI_AGCM3_2_S&daily=temperature_2m_mean,temperature_2m_min,precipitation_sum`;
-    const j = await (await fetch(url, { signal: ctl.signal })).json();
-    if (!j.daily?.time?.length || ctl.signal.aborted) return;
+    const res = await fetch(url, { signal: ctl.signal });
+    if (!res.ok || ctl.signal.aborted) return;
+    const j = await res.json();
+    if (!j.daily?.time?.length || ctl.signal.aborted || current !== target || !current?.site) return;
     const agg = aggregateClimate(j.daily);
-    const fsite = { ...agg, ph: current.site.ph, soil: current.site.soil ?? null, lat: c.lat };
+    const fsite = { ...agg, ph: current.site.ph, soil: current.site.soil ?? null, lat: c.lat,
+      irrigated: current.site.irrigated, terrain: current.site.terrain ?? null, radSlope: current.site.radSlope ?? null };
+    current.fsite = fsite;
     for (const s of current.scored) {
-      s.f45 = scoreSpecies(s.sp, fsite, { native: nativeRegion(s.sp) === true,
+      const ev = current.evOpts ? current.evOpts(s.sp) : { native: nativeRegion(s.sp) === true,
         countryNative: !L3_REGIONS[current.cc] && nativeHere(s.sp) === true,
-        countryNaturalized: !L3_REGIONS[current.cc] && !!current.cc && (NATURALIZED[s.sp.id] ?? []).includes(current.cc) }).score;
-      updateF45(s);
+        countryNaturalized: !L3_REGIONS[current.cc] && !!current.cc && (NATURALIZED[s.sp.id] ?? []).includes(current.cc) };
+      s.f45 = scoreSpecies(s.sp, fsite, ev).score;
     }
+    updateAllF45();
   } catch { /* the projection is an enhancement; fail silent */ }
 }
 function f45Text(s) {
@@ -1995,11 +2071,18 @@ function f45Text(s) {
   const d = Math.round((s.f45 - s.score) * 100);
   return `${Math.round(s.f45 * 100)}% <span class="d45">(${d >= 0 ? "+" : ""}${d})</span>`;
 }
-function updateF45(s) {
-  const badge = content.querySelector(`[data-f45="${s.sp.id}"]`);
-  if (badge) badge.hidden = !(s.score > 0.4 && s.f45 != null && s.f45 <= 0.4);
-  const stat = content.querySelector(`[data-f45stat="${s.sp.id}"]`);
-  if (stat) stat.innerHTML = f45Text(s);
+function updateAllF45() {
+  if (!current?.scored) return;
+  const map = new Map();
+  for (const s of current.scored) map.set(s.sp.id, s);
+  content.querySelectorAll("[data-f45]").forEach(badge => {
+    const s = map.get(+badge.dataset.f45);
+    if (s) badge.hidden = !(s.score > 0.4 && s.f45 != null && s.f45 <= 0.4);
+  });
+  content.querySelectorAll("[data-f45stat]").forEach(stat => {
+    const s = map.get(+stat.dataset.f45stat);
+    if (s) stat.innerHTML = f45Text(s);
+  });
 }
 
 // ---------- species photos (iNaturalist default taxon photo) ----------
@@ -2441,21 +2524,26 @@ function zipStore(files) {
 // ---------- export: full factor matrix as CSV ----------
 function csvExport() {
   if (!current) return;
-  const esc = v => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const esc = v => {
+    let s = String(v ?? "");
+    if (/^[\s\t\r\n]*([=+\-@%|\uFF1D\uFF0B\uFF0D\uFF20\uFF5C])/.test(s)) s = "'" + s;
+    return `"${s.replace(/"/g, '""')}"`;
+  };
   const head = ["scientific_name", "common_name", "family", "score", "fit", "score_2040s",
     "temp_factor", "rain_factor", "ph_factor", "photo_factor", "frost_factor", "chill_factor",
-    "native_here", "growth_class", "uses"];
+    "native_here", "growth_class", "uses", "irrigated"];
   // the CSV mirrors the panel exactly: active filters, the marginality cut
   // and the invasive exclusion all apply; clear the filters to export wide
   const rows = current.scored.filter(s => critMatch(s, critState())).map(s => [
-    s.sp.sci, s.sp.common, s.sp.family,
+    s.sp.sci, s.sp.common, s.sp.family ?? "",
     s.score.toFixed(3), s.fit.toFixed(3), s.f45 != null ? s.f45.toFixed(3) : "",
     ...[s.factors.temp, s.factors.rain, s.factors.ph, s.factors.photo, s.factors.frost, s.factors.chill]
       .map(v => v == null ? "" : (+v).toFixed(3)),
     nativeHere(s.sp) ?? "", s.sp.gclass, s.sp.uses.join("|"),
+    current.site.irrigated ? "true" : "false",
   ].map(esc).join(","));
   const c = critState();
-  const meta = `# Replantio ${new Date().toISOString().slice(0, 10)} · ${current.center.lat.toFixed(4)},${current.center.lng.toFixed(4)} · ${current.ha.toFixed(1)} ha\n`
+  const meta = `# Replantio ${new Date().toISOString().slice(0, 10)} · ${current.center.lat.toFixed(4)} ${current.center.lng.toFixed(4)} · ${current.ha.toFixed(1)} ha · irrigation=${current.site.irrigated ? "irrigated" : "rainfed"}\n`
     + `# filters: origin=${c.nativeOnly ? "native" : "all"} habit=${c.habit} use=${c.use}${c.matMax ? ` maturity<=${c.matMax}y` : ""}${c.crownMin ? ` crown>=${c.crownMin}m` : ""} · score>0.05 · invasives excluded (GRIIS${current.cc === "BR" ? " + Instituto Horus" : ""}) · ${rows.length} species\n`;
   downloadBlob(`replantio-especies-${current.center.lat.toFixed(3)}_${current.center.lng.toFixed(3)}.csv`,
     new Blob([meta + head.join(",") + "\n" + rows.join("\n")], { type: "text/csv;charset=utf-8" }));
