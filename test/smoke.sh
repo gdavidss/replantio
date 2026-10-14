@@ -18,7 +18,7 @@ DOM=$("$CHROME" --headless=new --disable-gpu --virtual-time-budget=30000 \
   "http://localhost:$PORT/index.html#a=-22.65,-47.65,-22.55,-47.55" 2>/dev/null)
 
 fail=0
-for needle in "loc-title" "sp-head" "site-fig" "section-h"; do
+for needle in "loc-title" "sp-head" "site-fig" "section-h" "habit-seg"; do
   if ! grep -q "$needle" <<<"$DOM"; then
     echo "SMOKE FAIL: '$needle' missing from rendered DOM"
     fail=1

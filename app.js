@@ -820,12 +820,17 @@ function chipsMarkup() {
   const fam = ["nontree", "shrub", "herb", "grass", "vine"].includes(habit); // any non-tree selection lights the family chip
   const chip = (on, f, v, label, n) =>
     `<button class="opt${on ? " on" : ""}" data-f="${f}" data-v="${v}"${on ? ' aria-pressed="true"' : ""}${!on && n === 0 ? " disabled" : ""}>${label}${!on && n != null ? `<span class="c">${n}</span>` : ""}</button>`;
+  const natN = current.nativeOnly ? null : critCount({ nativeOnly: true });
   return `<div class="sp-search"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><input id="sp-search" type="search" placeholder="${tr("Search a species: bean, oak, Quercus...")}" value="${(current.q ?? "").replace(/"/g, "&quot;")}" autocomplete="off" spellcheck="false"></div>
   <div class="chips-row">
-    ${current.cc ? chip(current.nativeOnly, "origin", current.nativeOnly ? "all" : "native", tr("native here"), current.nativeOnly ? null : critCount({ nativeOnly: true })) : ""}
-    ${chip(habit === "tree", "habit", "tree", tr("trees"), habit === "tree" ? null : critCount({ habit: "tree" }))}
-    ${chip(fam, "habit", "nontree", tr("shrubs and herbs"), fam ? null : critCount({ habit: "nontree" }))}
-    ${chip(habit === "all", "habit", "all", tr("everything"), habit === "all" ? null : critCount({ habit: "all" }))}
+    <div class="chips-main">
+      ${current.cc ? `<button class="opt chip-toggle${current.nativeOnly ? " on" : ""}" data-f="origin" data-v="${current.nativeOnly ? "all" : "native"}"${current.nativeOnly ? ' aria-pressed="true"' : ' aria-pressed="false"'}${!current.nativeOnly && natN === 0 ? " disabled" : ""}><span class="dot" aria-hidden="true"></span>${tr("native here")}${!current.nativeOnly && natN != null ? `<span class="c">${natN}</span>` : ""}</button>` : ""}
+      <div class="habit-seg" role="group" aria-label="${tr("Habit")}">
+        ${chip(habit === "tree", "habit", "tree", tr("trees"), habit === "tree" ? null : critCount({ habit: "tree" }))}
+        ${chip(fam, "habit", "nontree", tr("shrubs and herbs"), fam ? null : critCount({ habit: "nontree" }))}
+        ${chip(habit === "all", "habit", "all", tr("everything"), habit === "all" ? null : critCount({ habit: "all" }))}
+      </div>
+    </div>
     <button class="crit-toggle" data-crit-toggle aria-expanded="${current.critOpen ? "true" : "false"}">${tr("more filters")}<i class="car"></i></button>
   </div>`;
 }

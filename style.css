@@ -297,12 +297,75 @@ html, body { margin: 0; height: 100%; background: #0a0d0b; color: var(--text); }
 .sp-head.noexpand { cursor: default; }
 .sp-get .inv { font-size: 10px; color: var(--warn); max-width: 150px; text-align: right; white-space: normal; }
 
-/* chips row: guerrilla-mode front controls, one line */
+/* chips row: guerrilla-mode front controls */
 .chips-row {
-  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; row-gap: 6px; flex-wrap: wrap;
   margin-top: var(--s5); padding-bottom: 8px;
 }
+.chips-main {
+  display: inline-flex; align-items: center; gap: 6px; flex-wrap: nowrap; flex-shrink: 0;
+}
 .chips-row .crit-toggle { margin-left: auto; }
+
+/* independent toggle chip: "native here" */
+.chip-toggle {
+  display: inline-flex; align-items: center; gap: 4px;
+  min-height: 22px; padding: 0 7px; border-radius: 999px;
+  border: 1px solid var(--line-2); background: rgba(255, 255, 255, 0.03);
+  font: inherit; font-size: 11px; color: var(--muted); cursor: pointer;
+  white-space: nowrap; transition: all 0.15s ease; flex-shrink: 0;
+}
+.chip-toggle:hover:not([disabled]) {
+  color: var(--text); border-color: rgba(255, 255, 255, 0.22); background: rgba(255, 255, 255, 0.06);
+}
+.chip-toggle.on {
+  color: var(--accent); border-color: rgba(99, 201, 135, 0.45); background: var(--accent-dim);
+  font-weight: 500; box-shadow: 0 0 10px rgba(99, 201, 135, 0.1);
+}
+.chip-toggle .dot {
+  width: 4.5px; height: 4.5px; border-radius: 50%; background: currentColor;
+  opacity: 0.45; transition: opacity 0.15s, box-shadow 0.15s, transform 0.15s;
+}
+.chip-toggle.on .dot {
+  opacity: 1; box-shadow: 0 0 5px var(--accent);
+}
+.chip-toggle .c {
+  font-family: var(--mono); font-size: 9.5px; color: var(--faint);
+  margin-left: 2px; font-variant-numeric: tabular-nums;
+}
+.chip-toggle.on .c { display: none; }
+.chip-toggle[disabled] { opacity: 0.35; cursor: default; }
+
+/* segmented control for exclusive habit options (trees | shrubs and herbs | everything) */
+.habit-seg {
+  display: inline-flex; align-items: center; flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.038);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px; padding: 1.5px; gap: 1px;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+.habit-seg .opt {
+  display: inline-flex; align-items: center; justify-content: center;
+  background: transparent; border: 0; border-radius: 999px;
+  min-height: 20px; padding: 2px 7px;
+  font: inherit; font-size: 11px; line-height: 1.25;
+  color: var(--muted); cursor: pointer; white-space: nowrap;
+  transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+.habit-seg .opt:hover:not(.on):not([disabled]) {
+  color: var(--text); background: rgba(255, 255, 255, 0.04);
+}
+.habit-seg .opt.on {
+  background: rgba(255, 255, 255, 0.11);
+  color: var(--text); font-weight: 500;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+.habit-seg .opt .c {
+  font-family: var(--mono); font-size: 9px; color: var(--faint);
+  margin-left: 3.5px; font-variant-numeric: tabular-nums; opacity: 0.85;
+}
+.habit-seg .opt.on .c { display: none; }
+.habit-seg .opt[disabled] { opacity: 0.35; cursor: default; }
 
 /* collapsible sections: "Why these plants?" and "For projects" */
 .disc {
@@ -757,14 +820,35 @@ html, body { margin: 0; height: 100%; background: #0a0d0b; color: var(--text); }
     margin: var(--s4) calc(var(--pad) * -1) 0; padding: 2px var(--pad) 12px;
   }
   .chips-row::-webkit-scrollbar { display: none; }
-  .chips-row .opt, .chips-row .crit-toggle {
+  .chips-main {
+    display: inline-flex; align-items: center; gap: 8px; flex: none; flex-wrap: nowrap;
+  }
+  .chips-row > .opt, .chips-main .chip-toggle, .chips-row .crit-toggle {
     flex: none; min-height: 38px; padding: 0 15px; border-radius: 999px;
     border: 1px solid var(--line-2); background: rgba(255,255,255,.03);
     font-size: 14px; color: var(--muted); display: inline-flex; align-items: center; white-space: nowrap;
   }
-  .chips-row .opt.on { color: var(--accent); border-color: rgba(99, 201, 135, .5); background: var(--accent-dim); }
-  .chips-row .opt .c { font-size: 11px; }
+  .chips-main .chip-toggle.on { color: var(--accent); border-color: rgba(99, 201, 135, .5); background: var(--accent-dim); }
+  .chips-main .chip-toggle .dot { width: 6px; height: 6px; margin-right: 3px; }
+  .chips-main .chip-toggle .c { font-size: 11px; }
   .chips-row .crit-toggle { margin-left: 0; }
+
+  .habit-seg {
+    flex: none; display: inline-flex; align-items: center;
+    min-height: 38px; padding: 3px; gap: 3px;
+    border-radius: 999px; border: 1px solid var(--line-2);
+    background: rgba(255,255,255,.03);
+  }
+  .habit-seg .opt {
+    flex: none; min-height: 32px; padding: 0 12px; border-radius: 999px;
+    border: 0; background: transparent; font-size: 13.5px; color: var(--muted);
+    display: inline-flex; align-items: center; white-space: nowrap;
+  }
+  .habit-seg .opt.on {
+    background: rgba(255, 255, 255, 0.13); color: var(--text);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  }
+  .habit-seg .opt .c { font-size: 11px; margin-left: 5px; }
   .crit-row { flex-direction: column; gap: 6px; padding: 12px 0; }
   .crit-row .k { flex: none; font-size: 11px; }
   .crit-row .opts { column-gap: 8px; row-gap: 8px; margin: 0; }
