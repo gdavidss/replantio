@@ -1,6 +1,7 @@
 .vercel
 .env.local
 data/cache/
+data/.kew_cache/
 data/wcvp.zip
 data/wgsrpd_level4.dbf
 design/*.png

@@ -1,0 +1,20 @@
+{
+ "generated_utc": "2026-10-10T22:31:00Z",
+ "genus_prior_enriched": 373,
+ "kew_matched": 1185,
+ "presow_records": 114,
+ "script": "scripts/fetch_seed_traits.py",
+ "species": 2009,
+ "stage_errors": {
+  "match": [
+   0,
+   81
+  ],
+  "presow": 0,
+  "storage": 0,
+  "weights": 0
+ },
+ "storage_records": 1185,
+ "uncertain_fallback": 451,
+ "weight_records": 1381
+}
