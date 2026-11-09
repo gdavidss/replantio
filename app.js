@@ -38,9 +38,8 @@ let SPECIES = [], NATIVES = {}, NATURALIZED = {}, NAMES_PT = {}, SOURCING = null
 // render at ~675KB; it loads async alongside the optional layers so it never
 // blocks map interaction. Backlog: per-language dynamic import / trait-field
 // splitting — see README. Timed below to track regressions.
-console.time("species.json");
 const speciesReady = Promise.all([
-  fetch("data/species.json").then(r => r.json()).then(j => { SPECIES = j; console.timeEnd("species.json"); }),
+  fetch("data/species.json").then(r => r.json()).then(j => { SPECIES = j; }),
   fetch("data/natives.json").then(r => r.json()).then(j => { NATIVES = j; }).catch(() => {}), // optional layer
   fetch("data/naturalized.json").then(r => r.json()).then(j => { NATURALIZED = j; }).catch(() => {}), // optional layer
   // per-language species names, loaded only for the active language
@@ -597,8 +596,9 @@ async function analyze(pts) {
     // species-level (safe across analyses) and GBIF counts are area-level
     // (only valid for the same site object). Without this, every irrigation
     // toggle vaporises the nearby badges until the next fetch resolves.
-    const prevMap = current?.scored ? new Map(current.scored.map(x => [x.sp.id, x])) : null;
-    const sameSite = prevMap && current?.site === site;
+    // Same site only: a new analysis must never inherit the previous area's
+    // GBIF counts or 2040s values (false "nearby" / "2045" badges otherwise).
+    const prevMap = current?.site === site && current?.scored ? new Map(current.scored.map(x => [x.sp.id, x])) : null;
     const list = SPECIES
       .map(sp => {
         const rev = rankEv(sp);
@@ -610,14 +610,15 @@ async function analyze(pts) {
           sp,
           ev: rev,
           f45: prev?.f45 ?? null,
-          photo: prev?.photo ?? null,
+          // undefined = not looked up yet (inatPhoto fetches); null = looked up, none.
+          // Defaulting to null here blanked every thumbnail on fresh analyses.
+          photo: prev?.photo,
           gbif: prev?.gbif,
           gbifCount,
           strat: establishmentStrategy(sp, site, win),
           ...r
         };
         if (gbifCount > 0) row.rankScore = tiebreakScore(row, site, rev);
-        if (prev?.photo !== undefined) row.photo = prev.photo;
         return row;
       })
       .sort((a, b) => (b.score - a.score) || (b.rankScore - a.rankScore));
@@ -773,11 +774,14 @@ const COST_TABLES = {
   },
   TR: {
     currency: "TRY",
-    source: "OGM 2025 unit prices (tesis + bakim, official tariff) · TL",
+    // OGM letter E-91238605-010.07.01-14273091 (07.01.2025): the afforestation
+    // fee OGM charges forest-land permit holders, revalued yearly; an official
+    // tariff, not a restoration cost study, and it names no planting method.
+    source: "OGM 2025 afforestation fee for forest-land permits (official tariff, not a market price) · TL",
     titleKey: null,
     rows: [
-      ["Seedling planting, manual", 254854, 254854],
-      ["Annual tending", 16250, 16250, "/ha/yr"],
+      ["Afforestation", 254854, 254854],
+      ["Annual tending", 16250, 16250],
     ],
     areaRef: [254854, 254854],
   },
@@ -786,24 +790,27 @@ const COST_TABLES = {
     source: "Slovenia (SFS 2007–2020 means, Bozic et al. 2025) · € · planting vs sowing only",
     titleKey: null,
     rows: [
-      ["Seedling planting, manual", 6187, 6187],
+      // Table 9 regional range (Tolmin to Slovenj Gradec); mean 6,187
+      ["Seedling planting, manual", 4707, 8563],
       ["Direct seeding, manual", 1036, 1036],
     ],
-    areaRef: [6187, 6187],
+    areaRef: [4707, 8563],
   },
 };
-// Eurozone members read the Slovenia benchmark in EUR; everyone else falls
-// back to the Brazil table (previous behaviour).
-const EUROZONE = new Set(["AT", "BE", "HR", "CY", "EE", "FI", "FR", "DE", "GR", "IE", "IT", "LV", "LT", "LU", "MT", "NL", "PT", "SK", "SI", "ES"]);
+// Eurozone members read the Slovenia figures in EUR. Countries with no cost
+// data get no cost block at all: showing Brazilian R$ costs (and an R$ total
+// for the drawn area) to a US or Indian user was misleading.
+const EUROZONE = new Set(["AT", "BE", "BG", "HR", "CY", "EE", "FI", "FR", "DE", "GR", "IE", "IT", "LV", "LT", "LU", "MT", "NL", "PT", "SK", "SI", "ES"]);
 const costTable = () => {
   const cc = current.cc;
+  if (cc === "BR") return COST_TABLES.BR;
   if (cc === "TR") return COST_TABLES.TR;
   if (cc && EUROZONE.has(cc)) return COST_TABLES.EU;
-  return COST_TABLES.BR;
+  return null;
 };
 const money = (v, cur) => v >= 1e6
-  ? new Intl.NumberFormat(LOCALE, { style: "currency", currency: cur, notation: "compact", maximumFractionDigits: 1 }).format(v)
-  : new Intl.NumberFormat(LOCALE, { style: "currency", currency: cur, maximumFractionDigits: 0 }).format(v);
+  ? new Intl.NumberFormat(LOCALE, { style: "currency", currency: cur, notation: "compact", minimumFractionDigits: 0, maximumFractionDigits: 1 }).format(v)
+  : new Intl.NumberFormat(LOCALE, { style: "currency", currency: cur, minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(v); // min 0: older ECMA-402 throws on max<min
 // Lei 12.651/2012 Art. 61-A recomposition strips (consolidated areas), metres
 // per margin, by property size in fiscal modules; Art. 61-B caps the total.
 const APP61A = {
@@ -862,6 +869,7 @@ function legalMarkup() {
 
 function costsMarkup() {
   const t = costTable();
+  if (!t) return "";
   const cell = (lo, hi, unit = "/ha") => lo === hi
     ? `${money(lo, t.currency)}${unit}`
     : `${money(lo, t.currency)}&ndash;${money(hi, t.currency)}${unit}`;
@@ -951,10 +959,8 @@ function chipsMarkup() {
         ${chip(habit === "all", "habit", "all", tr("everything"), habit === "all" ? null : critCount({ habit: "all" }))}
       </div>
     </div>
-    <button class="crit-toggle" data-crit-toggle aria-expanded="${current.critOpen ? "true" : "false"}">${tr("more filters")}<i class="car"></i></button>
-  </div>
-  <div class="chips-sub">
     ${irrChip}
+    <button class="crit-toggle" data-crit-toggle aria-expanded="${current.critOpen ? "true" : "false"}">${tr("more filters")}<i class="car"></i></button>
   </div>`;
 }
 
@@ -1103,10 +1109,11 @@ function renderResults() {
       <a href="https://soilgrids.org/" target="_blank">SoilGrids 2.0, ISRIC (CC-BY 4.0)</a> &middot;
       <a href="https://www.gbif.org/" target="_blank">GBIF</a> &middot;
       <a href="https://powo.science.kew.org/" target="_blank">WCVP v16, RBG Kew (CC BY 3.0)</a> &middot;
+      <a href="https://ser-sid.org/" target="_blank">Seed Information Database, SER-INSR / RBG Kew (CC BY)</a> &middot;
       <a href="https://www.inaturalist.org/" target="_blank">${tr("Photos: iNaturalist")}</a> &middot;
       <a href="https://escolhas.org/wp-content/uploads/2023/09/Relatorio_RecuperacaoVegetal_Final.pdf" target="_blank">${tr("Costs: Instituto Escolhas 2023")}</a> &middot;
       <a href="https://www.ogm.gov.tr/tr/e-kutuphane-sitesi/mevzuat-sitesi/Talimatlar/01.01.2025%20Tarihinden%20%C4%B0tibaren%202025%20Y%C4%B1l%C4%B1%20Birim%20Bedellleri.pdf" target="_blank">OGM 2025 (TR)</a> &middot;
-      <a href="https://ojs.sazu.si/folia_bio_geo/article/view/8084" target="_blank">SFS Slovenia (EU benchmark)</a><br>
+      <a href="https://ojs.sazu.si/folia_bio_geo/article/view/8084" target="_blank">SFS Slovenia</a><br>
       ${tr("Map:")} Esri World Imagery (Esri, Vantor, Earthstar Geographics) &middot; &copy; OpenStreetMap contributors &middot; &copy; CARTO &middot; Leaflet
     </div>
     </div>
@@ -1144,7 +1151,7 @@ function speciesRow(s, i) {
                   ? tfmt("Part of the native flora of {region} (WCVP). Ranges resolve at whole-province scale; where a species grows within {region} varies.", { region: regionName() })
                   : tr("Part of the native flora of this region (WCVP)"))
                 : tr("Part of the native flora of this country (WCVP)")}">${tr("native")}</span>` : ""}
-          <span class="nearby gbif" data-nearby="${s.sp.id}" ${s.gbif?.count > 0 ? "" : "hidden"} title="${tr("GBIF occurrence records near this area")}" aria-label="${tr("Recorded nearby on GBIF")}">&#10003; ${tr("nearby")}</span>
+          <span class="nearby gbif" data-nearby="${s.sp.id}" ${s.gbif?.count > 0 ? "" : "hidden"} title="${tr("GBIF occurrence records near this area")}">&#10003; ${tr("nearby")}</span>
           <span class="nearby warn45" data-f45="${s.sp.id}" ${s.score > 0.4 && s.f45 != null && s.f45 <= 0.4 ? "" : "hidden"} title="${tr("Falls below suitable in the 2040s climate (CMIP6)")}">2045 &#9662;</span>
           ${s.score <= 0.4 ? `<span class="nearby mgnl">${tr(grade(s.score)).toLowerCase()}</span>` : ""}
         </div>
@@ -1178,7 +1185,6 @@ content.addEventListener("change", e => {
   } else return;
   const wasFocused = document.activeElement === e.target;
   current.scored = current.rescore();
-  current.shown = 12;
   renderResults(); loadRowPhotos();
   if (wasFocused && !isPhone()) content.querySelector("[data-ov-ph]")?.focus({ preventScroll: true });
   track("site_override", { irrigated: !!site.irrigated, ph: site.phUser ?? undefined });
@@ -1492,11 +1498,15 @@ function speciesDetail(id) {
     if (s.factors.texture != null && s.factors.texture < 1) notes.push(tfmt("The measured topsoil here is {t}, outside this species' preferred texture range: soft penalty, never an exclusion.", { t: tr(TEXTURE_NAMES[current.site.soil?.texture] ?? current.site.soil?.texture ?? "") }));
     if (current.site.irrigated) notes.push(tr("Scored as irrigated: water counts as available up to this species' optimum. Excess rain still applies."));
     else if (s.factors.rain < 0.2 && s.factors.temp >= 0.5) notes.push(tr("Rainfall is the limiting factor here. The model scores rainfed growing only; irrigation changes this picture entirely."));
-    // wet-margin demote or annual rain cap: rain 0.5 with the scored total above
-    // the ceiling can only come from the margin / consistency cap
-    const rTot = !sp.annual || s.window.months === 12 ? current.site.annualRain : wr;
-    if (s.factors.rain === 0.5 && rTot > sp.rain[3])
-      notes.push(tr("Annual rain here sits just above this species' EcoCrop ceiling. Excess-rain limits proxy disease and drainage rather than survival, so it takes a half penalty instead of exclusion."));
+    // year-round rain cap (its own explanation) vs the wet-margin demote:
+    // rain 0.5 with the scored total just above the ceiling = the margin
+    if (s.factors.raincap) {
+      notes.push(tr("Its best growing window fits, but year-round rain here far exceeds this species' rain ceiling, and a perennial stays in the ground all year: half penalty."));
+    } else {
+      const rTot = (sp.tree && (sp.ktmpr ?? 99) <= -10) || s.window.months === 12 ? current.site.annualRain : wr;
+      if (s.factors.rain === 0.5 && rTot > sp.rain[3] && rTot <= sp.rain[3] * 1.15)
+        notes.push(tr("Annual rain here sits just above this species' EcoCrop ceiling. Excess-rain limits proxy disease and drainage rather than survival, so it takes a half penalty instead of exclusion."));
+    }
     if (s.factors.frost === 0.5) {
       const kt = sp.ktmpr ?? sp.ktmp ?? 0;
       notes.push(current.site.absMin != null && current.site.absMin < kt
@@ -1530,7 +1540,7 @@ function speciesDetail(id) {
     <div class="stats">
       ${s.strat ? `<div class="stat"><span class="sk">${tr("Establishment")}</span><span class="sv">${tr(s.strat.labelKey)} <span class="adm">(${tr(s.strat.confidenceKey)})</span></span></div>` : ""}
       ${s.strat?.sowingWindow?.start != null ? `<div class="stat"><span class="sk">${tr("Sowing window")}</span><span class="sv">${s.strat.sowingWindow.length === 1 ? MONTHS[s.strat.sowingWindow.start] : `${MONTHS[s.strat.sowingWindow.start]}&ndash;${MONTHS[(s.strat.sowingWindow.start + s.strat.sowingWindow.length - 1) % 12]}`}</span></div>` : (s.strat?.sowingWindow?.length ? `<div class="stat"><span class="sk">${tr("Sowing window")}</span><span class="sv">${tfmt("~{n} months (rainy season)", { n: s.strat.sowingWindow.length })}</span></div>` : "")}
-      ${s.strat?.dormancy && DORMANCY_NAMES[s.strat.dormancy] ? `<div class="stat"><span class="sk">${tr("Seed Dormancy")}</span><span class="sv">${tr(DORMANCY_NAMES[s.strat.dormancy])}</span></div>` : ""}
+      ${s.strat?.dormancy && DORMANCY_NAMES[s.strat.dormancy] && !String(s.strat.dormancySource ?? "").startsWith("lifeform") ? `<div class="stat"><span class="sk">${tr("Seed Dormancy")}</span><span class="sv">${tr(DORMANCY_NAMES[s.strat.dormancy])}${/family|genus|taxon/.test(String(s.strat.dormancySource ?? "")) ? ` <span class="adm">(${tr("family or genus prior")})</span>` : ""}</span></div>` : ""}
       ${sp.tree ? `<div class="stat"><span class="sk">${tr("Trunk &oslash; 20 yr")}</span><span class="sv">${d20.toFixed(0)} cm</span></div>
       <div class="stat"><span class="sk">${tr("Canopy, 20 yr")}</span><span class="sv">${crown20.toFixed(1)} m &middot; ${fmt(Math.PI / 4 * crown20 * crown20)} m&sup2;</span></div>
       <div class="stat"><span class="sk">${tr("CO&#8322;e/tree, 20 yr")}</span><span class="sv">${fmt(co2Tree20)} kg</span></div>
@@ -2239,7 +2249,10 @@ async function gbifEvidence(top, bounds, signal) {
   if (signal.aborted) return;
 
   const valid = top.map((s, i) => ({ s, key: keys[i] }));
-  valid.filter(v => v.key === null || v.key === "ERR").forEach(v => { v.s.gbif = v.key === "ERR" ? "ERR" : null; updateEvidence(v.s); });
+  valid.filter(v => v.key === null || v.key === "ERR").forEach(v => {
+    const live = current?.scored?.find(x => x.sp.id === v.s.sp.id) ?? v.s;
+    live.gbif = v.key === "ERR" ? "ERR" : null; updateEvidence(live);
+  });
   const withKey = valid.filter(v => v.key !== null && v.key !== "ERR");
   if (!withKey.length) return;
 
@@ -2252,26 +2265,19 @@ async function gbifEvidence(top, bounds, signal) {
     const j = await (await fetch(url, { signal })).json();
     const counts = Object.fromEntries((j.facets?.[0]?.counts ?? []).map(c => [c.name, c.count]));
     for (const v of withKey) {
-      v.s.gbif = { key: v.key, count: counts[String(v.key)] ?? 0 };
-      v.s.gbifCount = v.s.gbif.count;
-      v.s.rankScore = tiebreakScore(v.s, current?.site, v.s.ev);
-      updateEvidence(v.s);
+      const live = current?.scored?.find(x => x.sp.id === v.s.sp.id) ?? v.s;
+      live.gbif = { key: v.key, count: counts[String(v.key)] ?? 0 };
+      live.gbifCount = live.gbif.count;
+      live.rankScore = tiebreakScore(live, current?.site, live.ev);
+      updateEvidence(live);
     }
+    // Re-sort the data only. Moving rendered rows here (1-3 s after first
+    // paint) shuffled cards under the user's finger and could surface the
+    // wrong rows; the next render (filter, show more, irrigation) applies it.
     current?.scored?.sort((a, b) => (b.score - a.score) || (b.rankScore - a.rankScore));
-    reorderSpList();
   } catch {
     if (signal.aborted) return;
-    for (const v of withKey) { v.s.gbif = "ERR"; updateEvidence(v.s); }
-  }
-}
-
-function reorderSpList() {
-  const list = document.getElementById("sp-list");
-  if (!list || current?.q?.trim()) return;
-  const pool = current.scored.filter(s => critMatch(s, critState())).slice(0, current.shown);
-  for (const s of pool) {
-    const el = list.querySelector(`[data-id="${s.sp.id}"]`);
-    if (el) list.appendChild(el);
+    for (const v of withKey) { const live = current?.scored?.find(x => x.sp.id === v.s.sp.id) ?? v.s; live.gbif = "ERR"; updateEvidence(live); }
   }
 }
 
@@ -2647,14 +2653,13 @@ function csvExport() {
     if (/^[\s\t\r\n]*([=+\-@%|\uFF1D\uFF0B\uFF0D\uFF20\uFF5C])/.test(s)) s = "'" + s;
     return `"${s.replace(/"/g, '""')}"`;
   };
-  // CSV column contract: the establishment columns were appended before
-  // `uses` (not grouped with the factors); column order is frozen — do not
-  // move them (downstream parsers read by position). Format version rides in
-  // the `#` meta line below, currently v2. `irrigated` is the last column and
-  // reports the site state the scores were computed under.
+  // CSV column contract: the v2 columns keep their positions (downstream
+  // parsers read by position); v3 APPENDS establishment_method,
+  // establishment_confidence, sowing_window and irrigated after `uses`.
+  // Format version rides in the `#` meta line below.
   const head = ["scientific_name", "common_name", "family", "score", "fit", "score_2040s",
     "temp_factor", "rain_factor", "ph_factor", "photo_factor", "frost_factor", "chill_factor",
-    "native_here", "growth_class", "establishment_method", "establishment_confidence", "sowing_window", "uses", "irrigated"];
+    "native_here", "growth_class", "uses", "establishment_method", "establishment_confidence", "sowing_window", "irrigated"];
   // the CSV mirrors the panel exactly: active filters, the marginality cut
   // and the invasive exclusion all apply; clear the filters to export wide
   const rows = current.scored.filter(s => critMatch(s, critState())).map(s => [
@@ -2662,11 +2667,11 @@ function csvExport() {
     s.score.toFixed(3), s.fit.toFixed(3), s.f45 != null ? s.f45.toFixed(3) : "",
     ...[s.factors.temp, s.factors.rain, s.factors.ph, s.factors.photo, s.factors.frost, s.factors.chill]
       .map(v => v == null ? "" : (+v).toFixed(3)),
-    nativeHere(s.sp) ?? "", s.sp.gclass, s.strat?.method ?? "", s.strat?.confidence ?? "", s.strat?.sowingWindow?.label || (s.strat?.sowingWindow?.length ? `~${s.strat.sowingWindow.length} mo` : ""), s.sp.uses.join("|"),
+    nativeHere(s.sp) ?? "", s.sp.gclass, s.sp.uses.join("|"), s.strat?.method ?? "", s.strat?.confidence ?? "", s.strat?.sowingWindow?.label || (s.strat?.sowingWindow?.length ? `~${s.strat.sowingWindow.length} mo` : ""),
     current.site.irrigated ? "true" : "false",
   ].map(esc).join(","));
   const c = critState();
-  const meta = `# Replantio v2 ${new Date().toISOString().slice(0, 10)} · ${current.center.lat.toFixed(4)},${current.center.lng.toFixed(4)} · ${current.ha.toFixed(1)} ha\n`
+  const meta = `# Replantio v3 ${new Date().toISOString().slice(0, 10)} · ${current.center.lat.toFixed(4)},${current.center.lng.toFixed(4)} · ${current.ha.toFixed(1)} ha\n`
     + `# establishment_method/establishment_confidence/sowing_window describe the current site, not the 2040s outlook\n`
     + `# irrigation=${current.site.irrigated ? "irrigated" : "rainfed"}\n`
     + `# filters: origin=${c.nativeOnly ? "native" : "all"} habit=${c.habit} establishment=${c.prop} use=${c.use}${c.matMax ? ` maturity<=${c.matMax}y` : ""}${c.crownMin ? ` crown>=${c.crownMin}m` : ""} · score>0.05 · invasives excluded (GRIIS${current.cc === "BR" ? " + Instituto Horus" : ""}) · ${rows.length} species\n`;

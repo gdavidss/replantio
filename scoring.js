@@ -651,16 +651,18 @@ export function scoreSpecies(sp, site, ev = null) {
   }
 
   // Annual-vs-window rain consistency cap for short-cycle perennials (G < 12):
-  // True annual crops (sp.annual && G < 12) complete their life inside their
-  // growing window and escape the rest of the year. Perennials (!sp.annual)
-  // remain physically rooted for all 12 months: a dry-adapted shrub, herb, or
-  // tropical tree cannot cherry-pick a dry seasonal window to score 1.0 while
-  // enduring a full-year deluge above its absolute ceiling RMAX (sp.rain[3]).
-  // Demote to 0.5 (waterlogging / disease-pressure caveat) rather than a 0.0
-  // kill, mirroring the 0.5 wet-margin demote already applied within
-  // WET_MARGIN above RMAX.
-  if (!sp.annual && G < 12 && annualRain > sp.rain[3]) {
-    rain = Math.min(rain, 0.5);
+  // a perennial stays rooted all year, so a dry-adapted species cannot score
+  // 1.0 on a dry seasonal window while the year delivers far more than its
+  // envelope allows. RMAX is cycle-scoped (G months), so the comparison is
+  // rate-consistent: annual rain vs RMAX scaled to 12 months. Comparing the
+  // annual total against raw RMAX is the unit mismatch that made #10 kill 109
+  // grassland species at Rize (and halved 99 of them in #26's first draft,
+  // wetland reed and marsh marigold included). Native evidence for this exact
+  // site waives it; dormant trees already score annual rain. Half, never kill.
+  let raincap = false;
+  if (!sp.annual && !dormantTree && G < 12 && annualRain > sp.rain[3] * 12 / G && !ev?.native && rain > 0.5) {
+    rain = 0.5;
+    raincap = true;
   }
 
   // An annual crop lives inside its growing cycle window and never meets the
@@ -671,20 +673,7 @@ export function scoreSpecies(sp, site, ev = null) {
     const annualMean = site.tavg.reduce((a, b) => a + b, 0) / 12;
     annual = trap(annualMean, ...sp.temp) > 0 ? 1 : 0;
     // Native right here beats the envelope: the regime is survivable by observation
-    if (!annual && ev?.native) {
-      annual = 1;
-    } else if (!annual && (dormantTree || (sp.decid && (sp.ktmpr ?? 99) <= -10))) {
-      // In boreal/sub-arctic regimes where the 12-month mean falls below the
-      // database-wide TMIN floor (2.0 C) due to extreme winter cold, a dormant
-      // perennial that survives dormant frost (frost > 0) is bounded by its
-      // active growing-season warmth (Gt, Körner 2012 treeline: >=3 warm months),
-      // not by frozen winter months it avoids through endodormancy.
-      // Off-envelope heat (annualMean > sp.temp[3]) remains a hard kill.
-      const warmMonths = site.tavg.filter(t => t >= 5).length;
-      if (annualMean < sp.temp[0] && annualMean < 2.0 && warmMonths >= 3 && temp > 0) {
-        annual = ev?.countryNative ? 1.0 : 0.5;
-      }
-    }
+    if (!annual && ev?.native) annual = 1;
   }
 
   // ---------------------------------------------------------------------------
@@ -885,7 +874,7 @@ export function scoreSpecies(sp, site, ev = null) {
     score,
     fit,
     rankScore,
-    factors: { temp, rain, ph, frost, photo, annual, chill, drain, depth, texture, soilDepth, salinity, drainage },
+    factors: { temp, rain, ph, frost, photo, annual, chill, drain, depth, texture, soilDepth, salinity, drainage, raincap },
     window: { start: best, months: Gt }
   };
 }
@@ -909,9 +898,9 @@ export function tiebreakScore(row, site = null, ev = null) {
     pts += Math.min(15, Math.log2(gbifCount + 1) * 3);
   }
 
-  // 3. Cultural staple / agroforestry & restoration keystone identity
-  if (sp?.uses?.includes("food") || sp?.uses?.includes("fruit")) pts += 5;
-  if (sp?.uses?.includes("timber") || sp?.uses?.includes("environmental")) pts += 3;
+  // (No use-tag bonus: EcoCrop "food" only means some part is edible, every
+  // tree with an empty CAT is tagged "timber" by the builder, and the bonus
+  // pushed duckweed, cattail and wild oat to the top of the all-habits view.)
 
   // 4. Penalize unresolved genus placeholders (e.g. "Chamaedorea sp.", "Rubus sp.")
   if (sp?.sci?.endsWith(" sp.")) pts -= 15;
@@ -1141,7 +1130,15 @@ export function establishmentStrategy(sp, site = null, optWin = null) {
   // alongside herbaceous species. Annual TREE taxa are excluded (!sp.tree):
   // a woody annual (e.g. Sesbania) faces seedling-establishment hazards, not
   // herbaceous ones, and resolves through the woody decision below.
-  const isHerbOrGrass = sp.porte === "herb" || sp.porte === "grass" || (sp.annual === true && !sp.tree);
+  const isHerbOrGrass = (sp.porte === "herb" || sp.porte === "grass" || (sp.annual === true && !sp.tree)) && sp.porte !== "vine";
+  // Crops propagated from cuttings, tubers, suckers or rhizomes, not seed
+  // (standard agronomy, FAO crop production guides): telling a grower to
+  // direct-seed sugarcane, banana, potato or garlic is simply wrong.
+  const VEGETATIVE_GENERA = new Set(["Musa", "Dioscorea", "Bambusa", "Dendrocalamus", "Colocasia", "Zingiber", "Curcuma"]);
+  const VEGETATIVE_SPECIES = new Set(["Saccharum officinarum", "Vetiveria zizanioides", "Chrysopogon zizanioides",
+    "Ipomoea batatas", "Solanum tuberosum", "Allium sativum", "Ananas comosus", "Manihot esculenta",
+    "Pennisetum purpureum", "Xanthosoma sagittifolium"]);
+  const isVegetativeCrop = VEGETATIVE_SPECIES.has(sp.sci) || VEGETATIVE_GENERA.has(sp.sci?.split(" ")[0]);
   const isVine = sp.porte === "vine";
   const isTreeOrShrub = sp.tree || sp.porte === "tree" || sp.porte === "shrub";
 
@@ -1215,7 +1212,17 @@ export function establishmentStrategy(sp, site = null, optWin = null) {
 
   // Seed Dormancy Directives (Baskin & Baskin 2014) apply across lifeforms
   const dormancyDirectives = [];
-  if (dormancy === "PY+PD" || presow === "scarification_plus_cold_stratification") {
+  // Recalcitrant seeds and tropical taxa without frost hardiness are
+  // chilling-sensitive: moist chilling kills them. The family-level PD prior
+  // has no such guard upstream (it flagged litchi, rambutan, akee, Agathis),
+  // so cold stratification is never advised for them here. (EcoCrop TMIN is a
+  // growth threshold, not seed chilling tolerance: Caragana has TMIN 10.)
+  const chillingSensitive = isRecalcitrant || (sp.gclass?.startsWith("tropical") && (sp.ktmpr ?? sp.ktmp ?? 0) > -6);
+  if (chillingSensitive && (dormancy === "PY+PD" || presow === "scarification_plus_cold_stratification")) {
+    dormancyDirectives.push("Physical seed dormancy (PY): Hot water or mechanical scarification recommended before sowing.");
+  } else if (chillingSensitive && (dormancy === "PD" || dormancy === "MPD" || presow === "cold_stratification" || presow === "warm_plus_cold_stratification")) {
+    // no cold-stratification advice for chilling-sensitive seed
+  } else if (dormancy === "PY+PD" || presow === "scarification_plus_cold_stratification") {
     dormancyDirectives.push("Combinational seed dormancy (PY+PD): Mechanical or hot water scarification followed by cold moist stratification before sowing (duration varies by species).");
   } else if (dormancy === "PY" || presow === "scarification" || (!isRecalcitrant && isLegume && dormancy == null && presow == null)) {
     dormancyDirectives.push("Physical seed dormancy (PY): Hot water or mechanical scarification recommended before sowing.");
@@ -1253,6 +1260,21 @@ export function establishmentStrategy(sp, site = null, optWin = null) {
     ...over,
   });
 
+  // 1b. Vegetatively propagated crops: neither seed nor nursery seedling.
+  if (isVegetativeCrop) {
+    return {
+      method: "vegetative",
+      directViable: false,
+      seedlingViable: false,
+      confidence: "high",
+      confidenceKey: "High confidence",
+      labelKey: "Cuttings or vegetative propagation",
+      noteKey: "Grown from cuttings, tubers, suckers or rhizomes rather than seed; source planting material from a local nursery or grower.",
+      directives: [],
+      ...base(),
+    };
+  }
+
   // 2. Lifeform shortcuts: herbs/grasses and vines resolve before any physiology.
   // Hyper-arid sites (UNEP AI < 0.05 without irrigation) route every lifeform
   // to nursery seedlings: direct seeding is unviable without supplemental
@@ -1277,9 +1299,9 @@ export function establishmentStrategy(sp, site = null, optWin = null) {
     return {
       method: "direct_seeding",
       directViable: true,
-      seedlingViable: false,
-      confidence: "high",
-      confidenceKey: "High confidence",
+      seedlingViable: true, // transplanting plugs is valid for herbs too
+      confidence: capped("medium"),
+      confidenceKey: capped("medium") === "medium" ? "Medium confidence" : "Low confidence",
       labelKey: "Direct seeding",
       noteKey: "Herbaceous species and grasses establish naturally and cost-effectively from direct seed sowing.",
       directives: [...dormancyDirectives],
@@ -1556,16 +1578,20 @@ export function establishmentStrategy(sp, site = null, optWin = null) {
 
   // E. Micro-Seeded Species (Eucalyptus grandis, Paulownia tomentosa, etc.)
   if (isMicroSeed) {
+    // Smaller seed reserves establish WORSE from direct seeding, not better
+    // (Moles & Westoby 2004): micro-seeded trees get seedlings, with the
+    // pelleting route kept only as a note, so direct viability stays
+    // monotone non-decreasing in seed mass.
     return {
-      method: "both",
-      directViable: true,
+      method: "seedling",
+      directViable: false,
       seedlingViable: true,
       confidence: capped("medium"),
       confidenceKey: capped("medium") === "medium" ? "Medium confidence" : "Low confidence",
-      labelKey: "Nursery seedlings (preferred) · Direct seeding conditional (weed-free SET)",
+      labelKey: "Nursery seedlings (standard)",
       noteKey: "Micro-seeded species (reserve advantage ≤ 0.2, ≈ <7 g per 1,000 seeds, Kew SID). Nursery seedlings provide highest certainty against weed competition; direct seeding is viable only on thoroughly prepared, weed-free mineral seedbeds using seed pelleting (SET) or high sowing density.",
       directives,
-      ...base({ conditional: true, requires: ["weed-free seedbed", "seed pelleting or high density"] }),
+      ...base(),
     };
   }
 
@@ -1597,22 +1623,11 @@ export function establishmentStrategy(sp, site = null, optWin = null) {
     };
   }
 
-  // G. Semi-Arid Seasonal Climate (other species)
-  if (isSemiAridSeasonal) {
-    return {
-      method: "both",
-      directViable: true,
-      seedlingViable: true,
-      confidence: "medium",
-      confidenceKey: "Medium confidence",
-      labelKey: win.start != null
-        ? "Nursery seedlings · Direct seeding viable (autumn window)"
-        : "Nursery seedlings · Direct seeding viable",
-      noteKey: "Seasonally wet Mediterranean/dryland climate: Nursery seedlings provide high certainty, but direct seeding at the onset of autumn/winter rains allows taproots to establish before summer drought.",
-      directives,
-      ...base({ conditional: true, requires: ["sowing timing"] }),
-    };
-  }
+  // (A former §G made every remaining woody species direct-seedable on
+  // semi-arid seasonal sites, so direct viability grew as aridity rose: 509
+  // species seedling-only at Hamburg but "direct seeding viable" at Seville.
+  // Climate decides WHEN to sow, never WHETHER the species qualifies; those
+  // species now fall through to §H/§I, and the sowing window still shows.)
 
   // H. Dry sites without a wet window (other non-pioneer trees):
   // Direct seeding of climax hardwoods without large seed reserves or pioneer traits

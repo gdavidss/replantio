@@ -96,7 +96,9 @@ for (const sci of tropicalRecalc) {
   console.log(`  PASS: ${sci.padEnd(25)} -> ${res.labelKey} (low confidence)`);
 }
 
-// --- 3. MICRO-SEEDED TREES (1000-seed weight < 2g: Pelleting SET / High-density broadcast)
+// --- 3. MICRO-SEEDED TREES (1000-seed weight < 2g): nursery seedlings; pelleting
+// (SET) stays a directive. Direct viability must be monotone in seed mass
+// (Moles & Westoby reserve effect), so micro-seeds never out-qualify mid-mass.
 console.log("\n--- 3. Testing Micro-Seeded Tree Species ---");
 const microSeededSpecies = [
   "Eucalyptus grandis",     // Rose Gum (1000-seed wt ~1.4g -> 0.0014g/seed)
@@ -107,9 +109,9 @@ for (const sci of microSeededSpecies) {
   const sp = spBySci.get(sci);
   if (!sp) continue;
   const res = establishmentStrategy(sp, SITE_HUMID);
-  assert.equal(res.method, "both", `${sci} must be both viable with pelleting`);
-  assert.equal(res.directViable, true, `${sci} direct seeding with pelleting is viable`);
-  assert.equal(res.labelKey, "Nursery seedlings (preferred) · Direct seeding conditional (weed-free SET)");
+  assert.equal(res.method, "seedling", `${sci}: micro-seeded trees get nursery seedlings`);
+  assert.equal(res.directViable, false, `${sci}: micro-seeds do not out-qualify mid-mass seeds for direct seeding`);
+  assert(res.directives.some(d => d.startsWith("Micro-seed directive")), `${sci}: pelleting route kept as a directive`);
   console.log(`  PASS: ${sci.padEnd(25)} -> ${res.labelKey} (1000-seed wt: ${sp.sw_1000g}g)`);
 }
 
@@ -188,9 +190,10 @@ for (const sci of herbSpecies) {
   const sp = spBySci.get(sci);
   if (!sp) continue;
   const res = establishmentStrategy(sp, SITE_HUMID);
-  assert.equal(res.method, "direct_seeding", `${sci} must be direct seeding only`);
+  assert.equal(res.method, "direct_seeding", `${sci}: direct seeding is the primary method`);
   assert.equal(res.directViable, true);
-  assert.equal(res.seedlingViable, false);
+  assert.equal(res.seedlingViable, true, `${sci}: transplanting is also valid for herbs`);
+  assert.notEqual(res.confidence, "high", `${sci}: a lifeform default is never high confidence`);
   assert.equal(res.labelKey, "Direct seeding");
   console.log(`  PASS: ${sci.padEnd(25)} -> ${res.labelKey} (porte: ${sp.porte})`);
 }
@@ -208,8 +211,8 @@ const REF_SCENARIOS = [
   {
     sci: "Eucalyptus grandis",
     site: { ai: 1.25, koppen: "Cfa", name: "São Paulo, Brazil (Humid subtropical, AI=1.25)" },
-    expectedMethod: "both",
-    expectedLabel: "Nursery seedlings (preferred) · Direct seeding conditional (weed-free SET)",
+    expectedMethod: "seedling",
+    expectedLabel: "Nursery seedlings (standard)",
     checkDirective: d => d.some(x => x.includes("Micro-seed directive"))
   },
   {
@@ -372,8 +375,10 @@ const pinea = spBySci.get("Pinus pinea");
 assert(pinea, "Pinus pinea must exist");
 assert(pinea.sw_1000g > 500 && pinea.sw_1000g < 1000, `Pinus pinea 1000-seed wt must be ~755g, got ${pinea.sw_1000g}`);
 const pineaStrat = establishmentStrategy(pinea, SITE_MEDITERRANEAN);
-assert.equal(pineaStrat.method, "both", "Pinus pinea in Mediterranean must allow both methods");
-assert.equal(pineaStrat.directViable, true, "Pinus pinea direct seeding must be viable");
+// (The removed semi-arid branch used to make it direct-seedable only because
+// the site is dry; climate decides WHEN to sow, not WHETHER. Same advice as humid.)
+assert.equal(pineaStrat.directViable, establishmentStrategy(pinea, SITE_HUMID).directViable,
+  "Pinus pinea: aridity alone must not change direct viability");
 assert(!pineaStrat.directives.some(d => d.includes("Dibble/bury 3–5 cm in autumn/winter")), "Pinus pinea must NOT receive large nut directive");
 console.log(`  PASS: Pinus pinea (TSW=${pinea.sw_1000g}g) correctly excluded from large-nut guild by family`);
 

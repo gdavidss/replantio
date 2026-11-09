@@ -430,10 +430,10 @@ assert.ok(barley?.annual, "barley is an annual");
 assert.equal(scoreSpecies(barley, giresun).factors.frost, 1,
   "annual window test stays KTMPR-first; barley is grown in Giresun");
 
-// boreal/sub-arctic annual gate reform (Kiruna & Fairbanks field reviews):
-// annual crops don't live in winter; dormant cold-hardy perennials in sub-2 C
-// regimes with >=3 warm months (Körner 2012 treeline criteria) must not be
-// beheaded by a binary full-year mean when growing season warmth and frost pass
+// annual-crop exemption from the annual-regime gate (#24): an annual crop
+// lives inside its growing window, so the 12-month mean does not gate it.
+// The #24 treeline branch for dormant perennials was NOT merged: it let
+// country evidence lift the gate (oak #1 at Kiruna, figs revived at Murmansk).
 const kiruna = {
   lat: 67.86,
   tavg: [-12.1, -11.5, -7.8, -2.1, 4.3, 10.5, 13.3, 11.2, 5.8, -0.4, -6.5, -10.1],
@@ -441,35 +441,22 @@ const kiruna = {
   prec: [32, 27, 28, 29, 41, 62, 85, 74, 52, 45, 38, 36],
   ph: null, absMin: -36.8,
 };
-const longyearbyen = { // high arctic / polar tundra (warmest month 8.1 C, only 2 warm months)
-  lat: 78.22,
-  tavg: [-9.8, -10.5, -10.2, -7.4, -1.9, 3.8, 8.1, 6.5, 1.8, -3.5, -6.4, -8.7],
-  tmin: [-13.2, -14.1, -13.8, -10.5, -4.2, 1.6, 5.8, 4.5, -0.1, -5.9, -9.4, -11.8],
-  prec: [22, 18, 17, 12, 11, 15, 24, 28, 26, 21, 25, 23],
-  ph: null, absMin: -31.9,
+const murmansk = { // published normals, approx.
+  lat: 68.97,
+  tavg: [-10.1, -9.7, -6.0, -1.0, 4.0, 9.6, 13.1, 11.3, 7.0, 1.4, -4.1, -7.6],
+  tmin: [-14.0, -13.6, -10.0, -4.7, 0.6, 5.7, 9.2, 7.9, 4.0, -1.2, -7.4, -11.4],
+  prec: [30, 25, 25, 25, 35, 55, 65, 65, 50, 40, 35, 30],
+  ph: null, absMin: -36,
 };
 assert.equal(scoreSpecies(barley, kiruna).factors.annual, 1, "annual barley escapes the 12-month mean in Kiruna");
-const birch = by("Betula pubescens");
-const birchKiruna = scoreSpecies(birch, kiruna, { countryNative: true });
-assert.equal(birchKiruna.factors.annual, 1, "native mountain birch clears annual gate in Kiruna");
-assert.ok(birchKiruna.score >= 0.4, `birch rates suitable in Kiruna: ${birchKiruna.score}`);
-const mugo = by("Pinus mugo");
-const mugoKiruna = scoreSpecies(mugo, kiruna);
-assert.equal(mugoKiruna.factors.annual, 0.5, "non-native hardy pine takes 0.5 demote caveat in sub-2 C regime");
-assert.ok(mugoKiruna.score >= 0.2, `mugo pine rates marginal/suitable in Kiruna: ${mugoKiruna.score}`);
-assert.equal(scoreSpecies(birch, longyearbyen, { countryNative: true }).score, 0,
-  "polar tundra with <3 warm months still trips annual gate for trees (Körner treeline law)");
+const canola = by("Brassica napus");
+assert.ok(canola?.annual, "canola is an annual crop");
+assert.ok(scoreSpecies(canola, winnipeg).score > 0.4, "canola, a Manitoba staple, rates at Winnipeg once annuals skip the annual gate");
+assert.equal(scoreSpecies(by("Quercus robur"), kiruna, { countryNative: true }).score, 0,
+  "country evidence never lifts the annual gate: oak stays out of Kiruna (67.9 N)");
+assert.equal(scoreSpecies(by("Ficus carica"), murmansk, { countryNative: true }).score, 0,
+  "evidence never revives a true climate kill: fig at Murmansk stays 0");
 assert.equal(scoreSpecies(by("Mangifera indica"), kiruna).score, 0, "tropical tree dead in Kiruna");
-assert.equal(scoreSpecies(by("Ficus carica"), kiruna).score, 0, "tender fig killed by frost in Kiruna");
-const khartoum = {
-  lat: 15.6,
-  tavg: [24, 26, 29, 32, 35, 35, 33, 32, 33, 34, 29, 25],
-  tmin: [16, 17, 20, 23, 26, 27, 25, 24, 25, 26, 21, 17],
-  prec: [0, 0, 0, 0, 3, 7, 45, 68, 18, 5, 0, 0],
-  ph: null, absMin: 8.0,
-};
-assert.equal(scoreSpecies(birch, khartoum).factors.annual, 0,
-  "excessive off-envelope annual heat still trips annual gate (Birch in Khartoum)");
 
 // user-declared irrigation waives the dry side only (Malatya field request):
 // water lifts to the species' optimal minimum, never above what falls
@@ -701,8 +688,8 @@ assert.equal(koppenGeigerClass([1, 2], [3, 4]), null);
 const grassStrat = establishmentStrategy({ porte: "grass" });
 assert.equal(grassStrat.method, "direct_seeding");
 assert.equal(grassStrat.directViable, true);
-assert.equal(grassStrat.seedlingViable, false);
-assert.equal(grassStrat.confidence, "high");
+assert.equal(grassStrat.seedlingViable, true, "transplanting plugs is valid for herbs and grasses too");
+assert.notEqual(grassStrat.confidence, "high", "a lifeform default is never high confidence");
 
 const herbStrat = establishmentStrategy({ porte: "herb", annual: true });
 assert.equal(herbStrat.method, "direct_seeding");
@@ -758,11 +745,42 @@ assert.equal(ashStrat.method, "seedling");
 assert.equal(ashStrat.directViable, false);
 assert.equal(ashStrat.labelKey, "Nursery seedlings (standard)");
 
-// 8. Tree: Micro-seeded species (Eucalyptus / Myrtaceae, 1.4g/1000 seeds) -> both viable with pelleting (SET)
+// 8. Tree: Micro-seeded species (Eucalyptus / Myrtaceae, 1.4g/1000 seeds) -> seedlings
+// (smaller reserves establish worse from direct seeding; pelleting stays a directive)
 const eucStrat = establishmentStrategy({ porte: "tree", tree: true, family: "Myrtaceae", storage: "orthodox", sw_1000g: 1.41 }, { ai: 1.15 });
-assert.equal(eucStrat.method, "both");
-assert.equal(eucStrat.directViable, true);
-assert.equal(eucStrat.labelKey, "Nursery seedlings (preferred) · Direct seeding conditional (weed-free SET)");
+assert.equal(eucStrat.method, "seedling");
+assert.equal(eucStrat.directViable, false);
+assert(eucStrat.directives.some(d => d.startsWith("Micro-seed directive")));
+// 8b. Direct viability is monotone non-decreasing in seed mass within a guild
+{
+  let last = false;
+  for (const g of [1, 3, 6, 7, 8, 20, 55, 200, 2000]) {
+    const v = establishmentStrategy({ porte: "tree", tree: true, family: "Oleaceae", storage: "orthodox", sw_1000g: g }, { ai: 1.15 }).directViable;
+    assert.ok(!last || v, `direct viability must not drop as seed mass rises (lost at ${g} g/1000)`);
+    last = v;
+  }
+}
+// 8c. Drier never makes direct seeding MORE viable (catalog-wide): semi-arid
+// seasonal Seville vs humid Hamburg
+{
+  const seville = { ai: 0.32, prec: [39.1, 31.3, 79.5, 51.7, 27.8, 9.7, 1.2, 2.5, 24.1, 87.2, 58.7, 59.9], tavg: [11.0, 12.5, 15.6, 17.8, 21.8, 26.3, 28.5, 28.3, 24.6, 20.1, 14.8, 11.7] };
+  const hamburg = { ai: 1.15, prec: Array(12).fill(65), tavg: [1, 2, 5, 9, 13, 16, 18, 18, 14, 10, 6, 3] };
+  const inverted = species.filter(sp => establishmentStrategy(sp, seville).directViable && !establishmentStrategy(sp, hamburg).directViable).map(sp => sp.sci);
+  assert.equal(inverted.length, 0, `direct seeding viable at Seville but not Hamburg: ${inverted.slice(0, 8).join(", ")}`);
+}
+// 8d. Vegetatively propagated crops are never told to direct-seed
+for (const sci of ["Saccharum officinarum", "Musa acuminata", "Solanum tuberosum", "Allium sativum", "Ipomoea batatas"]) {
+  const sp = by(sci); if (!sp) continue;
+  const st = establishmentStrategy(sp, { ai: 1.15 });
+  assert.equal(st.method, "vegetative", `${sci} is propagated vegetatively`);
+  assert.equal(st.directViable, false);
+}
+// 8e. Chilling-sensitive seed is never told to cold-stratify
+for (const sci of ["Litchi chinensis", "Dimocarpus longan", "Nephelium lappaceum"]) {
+  const sp = by(sci); if (!sp) continue;
+  const st = establishmentStrategy(sp, { ai: 1.15 });
+  assert.ok(!st.directives.some(d => /cold moist stratification/i.test(d)), `${sci}: no cold stratification for tropical/recalcitrant seed`);
+}
 
 // 9. Phase-2: continuous seed-reserve advantage anchors (legacy gates land on round values)
 close(seedReserveAdvantage(2), 0.10, 0.005, "advantage at 2 g/1000");
@@ -811,27 +829,11 @@ if (recalcDiverg.length) console.error("recalcitrant gate divergence:", recalcDi
 assert.equal(recalcDiverg.length, 0, `old/new recalcitrant gates diverge for ${recalcDiverg.length} species: ${recalcDiverg.join("; ")}`);
 
 
-// --- Annual-vs-Window Consistency Cap for G<12 Perennials (Report Fix #1)
+// --- Annual-vs-window rain consistency cap for G<12 perennials (#26, narrowed):
+// rate-consistent (annual rain vs RMAX * 12/G), waived by exact-site native
+// evidence, never for dormant trees, half never kill. The #26 draft compared
+// annual rain to raw RMAX (#10's unit mismatch) and halved 99 species at Rize.
 {
-  // 1. Ordu (s001, 1140 mm/yr): dry-adapted perennials with G<12 and RMAX < R_annual
-  // must drop from 1.0 to <= 0.5 (waterlogging caveat), never hard-killed to 0.0
-  const maca = by("Lepidium meyenii");         // G=8, perennial herb, RMAX=1000
-  const saltbush = by("Atriplex canescens");   // G=4, arid shrub, RMAX=600
-  const bluestem = by("Andropogon hallii");    // G=9, prairie grass, RMAX=1100
-  const medInter = by("Medicago intertexta");  // G=5, perennial-flagged herb, RMAX=600
-  assert.ok(!maca.annual && !saltbush.annual && !bluestem.annual && !medInter.annual);
-  for (const sp of [maca, saltbush, bluestem, medInter]) {
-    const res = scoreSpecies(sp, ordu);
-    assert.equal(res.factors.rain, 0.5, `${sp.sci} rain capped at 0.5 in Ordu (1140 mm > RMAX ${sp.rain[3]})`);
-    assert.ok(res.score > 0 && res.score <= 0.5, `${sp.sci} demoted to <= 0.5, never killed (${res.score})`);
-  }
-  // Native/wet-tolerant perennials at Ordu remain untouched
-  assert.equal(scoreSpecies(by("Agrostis tenuis"), ordu).score, 1.0, "Agrostis tenuis (RMAX 2100) stays 1.0 in Ordu");
-  assert.equal(scoreSpecies(by("Castanea mollissima"), ordu).score, 1.0, "Chinese chestnut (RMAX 1600) stays 1.0 in Ordu");
-  assert.ok(scoreSpecies(hazel, ordu, { countryNative: true }).score >= 0.4, "Ordu hazelnut retains suitability");
-
-  // 2. Hanoi (s050, 2078 mm/yr monsoon): desert wattle & dryland grasses demoted,
-  // while regional wet-tolerant perennials (sappanwood, tea, litchi, cassia) stay 1.0
   const hanoi = {
     lat: 21.0278,
     tavg: [17.3, 18.5, 21.9, 24.9, 27.9, 29.7, 29.2, 28.5, 27.4, 24.8, 22.3, 17.7],
@@ -839,86 +841,36 @@ assert.equal(recalcDiverg.length, 0, `old/new recalcitrant gates diverge for ${r
     prec: [65, 47, 76, 97, 212, 242, 302, 404, 348, 190, 59, 35],
     ph: null, absMin: 4.5,
   };
-  const desertWattle = by("Acacia jensenii"); // G=4, desert tree, RMAX=500
-  const woolGrass = by("Anthephora pubescens"); // G=5, arid grass, RMAX=950
-  assert.equal(scoreSpecies(desertWattle, hanoi).factors.rain, 0.5, "Acacia jensenii (RMAX 500) capped at 0.5 in Hanoi (2078 mm)");
-  assert.ok(scoreSpecies(desertWattle, hanoi).score <= 0.5, "Acacia jensenii drops out of Excellent in Hanoi");
-  assert.equal(scoreSpecies(woolGrass, hanoi).factors.rain, 0.5, "Anthephora pubescens (RMAX 950) capped at 0.5 in Hanoi");
-  for (const sci of ["Caesalpinia sappan", "Camellia sinensis", "Litchi chinensis", "Cinnamomum cassia", "Alnus nepalensis"]) {
-    const res = scoreSpecies(by(sci), hanoi);
-    assert.equal(res.factors.rain, 1.0, `wet-tolerant ${sci} keeps rain 1.0 in Hanoi`);
+  const desertWattle = by("Acacia jensenii"); // G=4, desert tree, RMAX=500: 2078 mm > 500*12/4
+  const dw = scoreSpecies(desertWattle, hanoi);
+  assert.equal(dw.factors.raincap, true, "desert wattle hits the year-round rain cap in monsoon Hanoi");
+  assert.ok(dw.factors.rain <= 0.5 && dw.score > 0, "capped to half, never killed");
+  // wetland / poorly drained perennials are not "waterlogged" by wet sites
+  for (const [sci, site] of [["Caltha palustris", rize], ["Phragmites communis", ordu], ["Alopecurus pratensis", rize], ["Agrostis stolonifera", rize]]) {
+    const sp = by(sci); if (!sp) continue;
+    assert.notEqual(scoreSpecies(sp, site).factors.raincap, true, `${sci} is not capped (rate-consistent threshold)`);
   }
-
-  // 3. Rize (s003, 2223 mm/yr) & Giresun (s002, 1437 mm/yr) & Kathmandu (s095, 3032 mm/yr):
-  // Steppe/dry perennials soft-capped at 0.5 (never hard-killed to 0.0)
-  assert.equal(scoreSpecies(by("Secale montanum"), giresun).factors.rain, 0.5, "Secale montanum (RMAX 550) capped at 0.5 in Giresun");
-  assert.equal(scoreSpecies(by("Agropyron intermedium"), giresun).factors.rain, 0.5, "Agropyron intermedium (RMAX 1160) capped at 0.5 in Giresun");
-  assert.equal(scoreSpecies(by("Rubus occidentalis x idaeus"), rize).factors.rain, 0.5, "Rubus hybrid (RMAX 1500) capped at 0.5 in Rize");
-  assert.equal(scoreSpecies(by("Fragaria virginiana"), rize).factors.rain, 0.5, "Fragaria virginiana (RMAX 1700) capped at 0.5 in Rize");
-  assert.ok(scoreSpecies(tea, rize, { countryNaturalized: true }).score > 0.25, "Rize tea unaffected");
-
-  const kathmandu = {
-    lat: 27.72,
-    tavg: [10.4, 12.6, 16.4, 19.8, 21.6, 22.6, 22.2, 22.0, 21.0, 18.2, 14.1, 11.1],
-    tmin: [5.3, 7.5, 11.3, 14.7, 16.5, 17.5, 17.1, 16.9, 15.9, 13.1, 9.0, 6.0],
-    prec: [28, 30, 64, 85, 228, 454, 874, 722, 449, 82, 8, 8],
-    ph: null, absMin: -1.4,
-  };
-  for (const sci of ["Bromus inermis", "Eragrostis trichodes", "Rumex crispus"]) {
-    const res = scoreSpecies(by(sci), kathmandu);
-    assert.equal(res.factors.rain, 0.5, `${sci} capped at 0.5 in perhumid Kathmandu (3032 mm)`);
-    assert.ok(res.score <= 0.5, `${sci} drops from 1.0 tie in Kathmandu`);
-  }
-
-  // 4. True annual crops (sp.annual && G < 12) are exempt from full-year precipitation cap
-  const medMinima = by("Medicago minima"); // G=5, annual=true, RMAX=600
-  const rye = by("Secale cereale");        // G=6, annual=true, RMAX=2000
-  const cabbage = by("Brassica oleracea var. capitata"); // G=4, annual=true, RMAX=2500
-  assert.ok(medMinima.annual && barley.annual && rye.annual && cabbage.annual && bean.annual);
-  assert.equal(scoreSpecies(medMinima, ordu).factors.rain, 1.0, "annual Medicago minima exempt from annual rain cap in Ordu");
+  // exact-site native evidence waives the cap
+  assert.notEqual(scoreSpecies(desertWattle, hanoi, { native: true }).factors.raincap, true, "native evidence waives the cap");
+  // dormant trees already score annual rain: never capped
+  for (const sp of species.filter(x => x.tree && (x.ktmpr ?? 99) <= -10).slice(0, 200))
+    assert.notEqual(scoreSpecies(sp, rize).factors.raincap, true, `${sp.sci}: dormant trees are never capped`);
+  // true annual crops are exempt
   assert.equal(scoreSpecies(barley, giresun).factors.rain, 1.0, "annual barley exempt in Giresun");
-  assert.equal(scoreSpecies(by("Allium cepa var. aggregatum"), rize).factors.rain, 1.0, "annual shallot exempt in Rize (2223 mm > RMAX 1000)");
-  assert.ok(scoreSpecies(rye, rize).factors.rain > 0.9, "annual rye exempt from 0.5 cap in Rize");
-  assert.equal(scoreSpecies(cabbage, kathmandu).factors.rain, 1.0, "annual cabbage exempt in Kathmandu");
-
-  // 5. Semi-arid & arid sites (Konya, Seville) remain completely unaffected
-  const konyaSite = {
-    lat: 37.87,
-    tavg: [0.2, 1.8, 6.2, 11.5, 16.4, 20.8, 24.2, 23.9, 19.2, 13.2, 6.8, 2.1],
-    tmin: [-4.1, -2.8, 0.8, 5.4, 9.8, 13.9, 17.1, 16.9, 12.3, 7.0, 1.5, -2.2],
-    prec: konyaNormals.prec,
-    ph: null, absMin: -19.6,
-  };
-  const sevilleSite = {
-    lat: 37.39,
-    tavg: [11.0, 12.5, 15.6, 17.8, 21.8, 26.3, 28.5, 28.3, 24.6, 20.1, 14.8, 11.7],
-    tmin: [5.9, 7.0, 9.6, 11.5, 14.8, 18.8, 20.6, 20.8, 18.1, 14.4, 9.8, 7.0],
-    prec: sevilleNormals.prec,
-    ph: null, absMin: -0.4,
-  };
-  assert.equal(scoreSpecies(by("Hippophae rhamnoides"), konyaSite).score, 1.0, "sea buckthorn stays 1.0 in semi-arid Konya");
-  assert.equal(scoreSpecies(by("Stipa glareosa"), konyaSite).score, 1.0, "feathergrass stays 1.0 in semi-arid Konya");
-  assert.equal(scoreSpecies(by("Pinus halepensis"), sevilleSite).score, 1.0, "Aleppo pine stays 1.0 in semi-arid Seville");
-  assert.equal(scoreSpecies(by("Pistacia lentiscus"), sevilleSite).score, 1.0, "mastic stays 1.0 in semi-arid Seville");
-
-  // 6. Boundary verification: annualRain === RMAX keeps 1.0; annualRain === RMAX + 1 drops to 0.5
-  const boundarySp = by("Atriplex canescens"); // RMAX = 600, G = 4, !annual
-  // G=4 window with 75mm/mo = 300mm (optimal range [250, 450]); 8 other months = 37.5mm/mo -> 600mm annual
-  const precAtBoundary = [75, 75, 75, 75, 37.5, 37.5, 37.5, 37.5, 37.5, 37.5, 37.5, 37.5];
-  const precOverBoundary = [75, 75, 75, 75, 37.5, 37.5, 37.5, 37.5, 37.5, 37.5, 37.5, 38.5]; // 601mm
-  const siteBoundaryAt = {
-    lat: 35.0,
-    tavg: [20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20],
-    tmin: [15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15],
-    prec: precAtBoundary,
-    ph: 7.0, absMin: 10.0,
-  };
-  const siteBoundaryOver = { ...siteBoundaryAt, prec: precOverBoundary };
-  assert.equal(scoreSpecies(boundarySp, siteBoundaryAt).factors.rain, 1.0, "Atriplex canescens keeps rain 1.0 at annualRain === RMAX (600)");
-  assert.equal(scoreSpecies(boundarySp, siteBoundaryOver).factors.rain, 0.5, "Atriplex canescens capped at 0.5 when annualRain exceeds RMAX by 1 mm (601)");
+  // anchors untouched
+  assert.ok(scoreSpecies(hazel, ordu, { countryNative: true }).score >= 0.4, "Ordu hazelnut retains suitability");
+  assert.ok(scoreSpecies(tea, rize, { countryNaturalized: true }).score > 0.25, "Rize tea unaffected");
+  // no cliff: a 1 mm change in annual rain cannot halve a species
+  const boundarySp = by("Atriplex canescens"); // RMAX 600, G 4
+  const flat = (mm) => ({ lat: 35, tavg: Array(12).fill(20), tmin: Array(12).fill(15), prec: [75, 75, 75, 75, ...Array(8).fill((mm - 300) / 8)], ph: 7, absMin: 10 });
+  assert.equal(scoreSpecies(boundarySp, flat(600)).factors.rain, scoreSpecies(boundarySp, flat(601)).factors.rain, "no 1 mm cliff at RMAX");
 }
 
-// --- Evidence-Weighted Ranking & Tiebreak Architecture (Report Fix #3)
+// --- Evidence-Weighted Ranking & Tiebreak Architecture (#25)
+// NOTE: the Ordu-coastal, Mumbai, Manaus and Curitiba-highland climates below
+// are SYNTHETIC tuned fixtures (e.g. Ordu absMin -5.5 vs ERA5 -10.2, Curitiba
+// absMin +0.5), testing the comparator, not the named real sites. Rank
+// assertions are relational, not exact positions, so data growth can't flip them.
 {
   const nativesL3 = JSON.parse(readFileSync(new URL("../data/natives_l3.json", import.meta.url)));
 
@@ -1022,7 +974,7 @@ assert.equal(recalcDiverg.length, 0, `old/new recalcitrant gates diverge for ${r
   }).sort((a, b) => (b.score - a.score) || (b.rankScore - a.rankScore));
   const cacaoRank = manausRanked.findIndex(r => r.sp.sci === "Theobroma cacao") + 1;
   const colocynthRank = manausRanked.findIndex(r => r.sp.sci === "Citrullus colocynthis") + 1;
-  assert.ok(cacaoRank < 40 && cacaoRank < colocynthRank,
+  assert.ok(cacaoRank < colocynthRank,
     `Theobroma cacao (#${cacaoRank}) ranks far above Citrullus colocynthis (#${colocynthRank})`);
   assertMonotonic(manausRanked, "Manaus");
 
@@ -1043,7 +995,13 @@ assert.equal(recalcDiverg.length, 0, `old/new recalcitrant gates diverge for ${r
     return { sp, ...scoreSpecies(sp, curitibaHighland, ev) };
   }).sort((a, b) => (b.score - a.score) || (b.rankScore - a.rankScore));
   const araucariaRank = curitibaRanked.findIndex(r => r.sp.sci === "Araucaria angustifolia") + 1;
-  assert.equal(araucariaRank, 1, `Araucaria angustifolia surfaces at #1 in Curitiba highland tiebreak (got #${araucariaRank})`);
+  {
+    // every species ranked above Araucaria in its score tier is itself a regional native
+    const ara = curitibaRanked[araucariaRank - 1];
+    const ahead = curitibaRanked.slice(0, araucariaRank - 1).filter(r => r.score === ara.score);
+    const nonNativeAhead = ahead.filter(r => !nativesL3[r.sp.id]?.includes("BZS")).map(r => r.sp.sci);
+    assert.equal(nonNativeAhead.length, 0, `non-natives outrank native Araucaria in its tier: ${nonNativeAhead.join(", ")} (Araucaria #${araucariaRank})`);
+  }
   assertMonotonic(curitibaRanked, "Curitiba");
 }
 

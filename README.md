@@ -231,6 +231,7 @@ daylength at four latitudes, and fixture climates for Berlin and Sao Paulo).
 | Layer | Source | Access | License/terms |
 |---|---|---|---|
 | Species envelopes | FAO EcoCrop (2,568 species), OpenCLIM mirror | vendored at build time | attribute FAO |
+| Seed traits (storage behaviour, seed mass, dormancy cues) | Seed Information Database (SID), SER-INSR / RBG Kew, ser-sid.org | vendored at build time (scripts/fetch_seed_traits.py) | attribute SER-INSR / RBG Kew (CC BY) |
 | Climate | Open-Meteo ERA5 archive | live, CORS, keyless | CC-BY 4.0, <10k calls/day |
 | Soil | SoilGrids 2.0, ISRIC | live, CORS, keyless | CC-BY 4.0, 5 req/min |
 | Occurrence | GBIF v1 API | live, CORS, keyless | attribute GBIF |

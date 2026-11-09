@@ -303,7 +303,7 @@ html, body { margin: 0; height: 100%; background: #0a0d0b; color: var(--text); }
   margin-top: var(--s5); padding-bottom: 8px;
 }
 .chips-main {
-  display: inline-flex; align-items: center; gap: 6px; flex-wrap: nowrap; flex-shrink: 0;
+  display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; /* long labels (de/es/hi/sw) must wrap inside the 420px panel */
 }
 .chips-row .crit-toggle { margin-left: auto; }
 
@@ -317,14 +317,7 @@ html, body { margin: 0; height: 100%; background: #0a0d0b; color: var(--text); }
   flex-shrink: 0;
 }
 
-.chips-row .opt.on { color: var(--accent); }
-.chips-row .crit-toggle { margin-left: auto; }
 
-/* sub-row for environmental / site overrides: "irrigated" */
-.chips-sub {
-  display: flex; align-items: center; gap: 8px;
-  margin-top: 4px; padding-bottom: 8px;
-}
 .chip-irr {
   display: inline-flex; align-items: center; gap: 4px;
   min-height: 22px; padding: 0 7px; border-radius: 999px;
@@ -889,16 +882,13 @@ html, body { margin: 0; height: 100%; background: #0a0d0b; color: var(--text); }
   }
   .habit-seg .opt .c { font-size: 11px; margin-left: 5px; }
 
-  .chips-sub {
-    margin: 4px calc(var(--pad) * -1) 8px; padding: 0 var(--pad);
-  }
-  .chips-sub .chip-irr {
+  .chips-row .chip-irr {
     flex: none; min-height: 44px; padding: 0 14px; border-radius: 999px;
     border: 1px solid var(--line); background: rgba(255, 255, 255, 0.02);
     font-size: 13.5px; color: var(--muted); display: inline-flex; align-items: center; white-space: nowrap;
   }
-  .chips-sub .chip-irr:hover { color: var(--text); border-color: var(--line-2); }
-  .chips-sub .chip-irr.on {
+  .chips-row .chip-irr:hover { color: var(--text); border-color: var(--line-2); }
+  .chips-row .chip-irr.on {
     color: var(--text); border-color: rgba(121, 166, 198, 0.38); background: rgba(121, 166, 198, 0.1);
   }
   .crit-row { flex-direction: column; gap: 6px; padding: 12px 0; }
