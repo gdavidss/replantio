@@ -7,7 +7,7 @@ DIR="$(cd "$(dirname "$0")/.." && pwd)"
 CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 
 if ! curl -s -o /dev/null "http://localhost:$PORT/index.html"; then
-  (cd "$DIR" && python3 -m http.server "$PORT" >/dev/null 2>&1 &)
+  python3 -m http.server "$PORT" --directory "$DIR" >/dev/null 2>&1 &
   SERVER_PID=$!
   trap 'kill $SERVER_PID 2>/dev/null' EXIT
   sleep 1
@@ -18,7 +18,7 @@ DOM=$("$CHROME" --headless=new --disable-gpu --virtual-time-budget=30000 \
   "http://localhost:$PORT/index.html#a=-22.65,-47.65,-22.55,-47.55" 2>/dev/null)
 
 fail=0
-for needle in "loc-title" "sp-head" "site-fig" "section-h"; do
+for needle in "loc-title" "sp-head" "site-fig" "section-h" "habit-seg"; do
   if ! grep -q "$needle" <<<"$DOM"; then
     echo "SMOKE FAIL: '$needle' missing from rendered DOM"
     fail=1
