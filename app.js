@@ -742,20 +742,68 @@ const USE_LABELS = { timber: "timber", fruit: "fruit", environmental: "environme
 
 const nativeHere = sp => current.cc && NATIVES[sp.id] ? NATIVES[sp.id].includes(current.cc) : null;
 
-// R$/ha at 3x2 m spacing, Instituto Escolhas 2023 (Tabela 11); each range spans
-// labour arrangements from own workforce to contracted crews
-const COSTS = [
-  ["Natural regeneration management", 2430, 5856],
-  ["Regeneration + enrichment", 6096, 12196],
-  ["Regeneration + densification + enrichment", 10286, 19900],
-  ["Seedling planting, mechanized", 18545, 31059],
-  ["Seedling planting, manual", 19591, 36582],
-  ["Direct seeding, mechanized", 14986, 21213],
-  ["Direct seeding, manual", 14856, 23398],
-];
-const brl = v => v >= 1e6
-  ? `R$ ${(v / 1e6).toLocaleString(LOCALE, { maximumFractionDigits: 1 })}M`
-  : `R$ ${fmt(v)}`;
+// Restoration cost references. Only countries with a solid local source get
+// their own table; everywhere else falls back to the original Brazil table
+// (old behaviour), which is self-labelled via R$ + Escolhas source.
+// - BR (and fallback): R$/ha at 3x2 m spacing, Instituto Escolhas 2023
+//   Tabela 11 (each range spans labour arrangements: own workforce to
+//   contracted crews). Solid for Brazil.
+// - TR: TL/ha, OGM 2025 official unit prices (tesis + annual bakim). Official
+//   tariff, not a market survey — treat as administrative upper bound.
+// - EU: EUR/ha, Slovenia Forest Service 2007–2020 realised means, Bozic et al.
+//   2025 (planting measure EUR 6,187/ha, sowing EUR 1,036/ha across 14 regions).
+//   Single-country temperate sample, 2007–2020 prices, planting vs sowing only —
+//   an EU indication, not an EU price list. Protection against game damage
+//   (42% of the SFS budget) is a separate cost category, not inside the 6,187.
+const COST_TABLES = {
+  BR: {
+    currency: "BRL",
+    source: "Instituto Escolhas 2023, Table 11 · 3×2 m · R$",
+    titleKey: "range across labour arrangements, own workforce to contracted; 2023 prices, 3x2 m spacing",
+    rows: [
+      ["Natural regeneration management", 2430, 5856],
+      ["Regeneration + enrichment", 6096, 12196],
+      ["Regeneration + densification + enrichment", 10286, 19900],
+      ["Seedling planting, mechanized", 18545, 31059],
+      ["Seedling planting, manual", 19591, 36582],
+      ["Direct seeding, mechanized", 14986, 21213],
+      ["Direct seeding, manual", 14856, 23398],
+    ],
+    areaRef: [18545, 36582],
+  },
+  TR: {
+    currency: "TRY",
+    source: "OGM 2025 unit prices (tesis + bakim, official tariff) · TL",
+    titleKey: null,
+    rows: [
+      ["Seedling planting, manual", 254854, 254854],
+      ["Annual tending", 16250, 16250, "/ha/yr"],
+    ],
+    areaRef: [254854, 254854],
+  },
+  EU: {
+    currency: "EUR",
+    source: "Slovenia (SFS 2007–2020 means, Bozic et al. 2025) · € · planting vs sowing only",
+    titleKey: null,
+    rows: [
+      ["Seedling planting, manual", 6187, 6187],
+      ["Direct seeding, manual", 1036, 1036],
+    ],
+    areaRef: [6187, 6187],
+  },
+};
+// Eurozone members read the Slovenia benchmark in EUR; everyone else falls
+// back to the Brazil table (previous behaviour).
+const EUROZONE = new Set(["AT", "BE", "HR", "CY", "EE", "FI", "FR", "DE", "GR", "IE", "IT", "LV", "LT", "LU", "MT", "NL", "PT", "SK", "SI", "ES"]);
+const costTable = () => {
+  const cc = current.cc;
+  if (cc === "TR") return COST_TABLES.TR;
+  if (cc && EUROZONE.has(cc)) return COST_TABLES.EU;
+  return COST_TABLES.BR;
+};
+const money = (v, cur) => v >= 1e6
+  ? new Intl.NumberFormat(LOCALE, { style: "currency", currency: cur, notation: "compact", maximumFractionDigits: 1 }).format(v)
+  : new Intl.NumberFormat(LOCALE, { style: "currency", currency: cur, maximumFractionDigits: 0 }).format(v);
 // Lei 12.651/2012 Art. 61-A recomposition strips (consolidated areas), metres
 // per margin, by property size in fiscal modules; Art. 61-B caps the total.
 const APP61A = {
@@ -813,13 +861,20 @@ function legalMarkup() {
 }
 
 function costsMarkup() {
-  const rows = COSTS.map(([k, lo, hi]) =>
-    `<div class="stat"><span class="sk">${tr(k)}</span><span class="sv" style="white-space:nowrap">${brl(lo)}&ndash;${brl(hi)}/ha</span></div>`).join("");
-  return `<div class="section-h" title="${tr("range across labour arrangements, own workforce to contracted; 2023 prices, 3x2 m spacing")}">${tr("Restoration cost")}</div>
+  const t = costTable();
+  const cell = (lo, hi, unit = "/ha") => lo === hi
+    ? `${money(lo, t.currency)}${unit}`
+    : `${money(lo, t.currency)}&ndash;${money(hi, t.currency)}${unit}`;
+  const rows = t.rows.map(([k, lo, hi, unit]) =>
+    `<div class="stat"><span class="sk">${tr(k)}</span><span class="sv" style="white-space:nowrap">${cell(lo, hi, unit)}</span></div>`).join("");
+  const [alo, ahi] = t.areaRef;
+  const title = t.titleKey ? tr(t.titleKey) : t.source;
+  return `<div class="section-h" title="${title}">${tr("Restoration cost")}</div>
     <div class="stats" style="margin-top:0">
       ${rows}
-      <div class="stat wide"><span class="sk">${tr("Seedling planting in this area")}</span><span class="sv">${brl(18545 * current.ha)}&ndash;${brl(36582 * current.ha)}</span></div>
-    </div>`;
+      <div class="stat wide"><span class="sk">${tr("Seedling planting in this area")}</span><span class="sv">${cell(alo * current.ha, ahi * current.ha, "")}</span></div>
+    </div>
+    <div class="evidence">${tr("Data:")} ${t.source} &middot; ${tr("Indicative range — confirm with a local nursery or forestry agency; labour and seedling prices vary widely.")}</div>`;
 }
 
 // class-level metrics, memoised per growth class
@@ -1049,7 +1104,9 @@ function renderResults() {
       <a href="https://www.gbif.org/" target="_blank">GBIF</a> &middot;
       <a href="https://powo.science.kew.org/" target="_blank">WCVP v16, RBG Kew (CC BY 3.0)</a> &middot;
       <a href="https://www.inaturalist.org/" target="_blank">${tr("Photos: iNaturalist")}</a> &middot;
-      <a href="https://escolhas.org/wp-content/uploads/2023/09/Relatorio_RecuperacaoVegetal_Final.pdf" target="_blank">${tr("Costs: Instituto Escolhas 2023")}</a><br>
+      <a href="https://escolhas.org/wp-content/uploads/2023/09/Relatorio_RecuperacaoVegetal_Final.pdf" target="_blank">${tr("Costs: Instituto Escolhas 2023")}</a> &middot;
+      <a href="https://www.ogm.gov.tr/tr/e-kutuphane-sitesi/mevzuat-sitesi/Talimatlar/01.01.2025%20Tarihinden%20%C4%B0tibaren%202025%20Y%C4%B1l%C4%B1%20Birim%20Bedellleri.pdf" target="_blank">OGM 2025 (TR)</a> &middot;
+      <a href="https://ojs.sazu.si/folia_bio_geo/article/view/8084" target="_blank">SFS Slovenia (EU benchmark)</a><br>
       ${tr("Map:")} Esri World Imagery (Esri, Vantor, Earthstar Geographics) &middot; &copy; OpenStreetMap contributors &middot; &copy; CARTO &middot; Leaflet
     </div>
     </div>
