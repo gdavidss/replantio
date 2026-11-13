@@ -1358,13 +1358,19 @@ function rangeStrip(label, unit, env, val, dec) {
     <div class="fx">${f(val)}${unit}</div></div>`;
 }
 function windowVals(s) {
+  if (s.window?.temp != null && s.window?.rain != null) {
+    return { wt: s.window.temp, wr: s.window.rain };
+  }
   const { start, months } = s.window;
   let tsum = 0, rtot = 0;
   for (let k = 0; k < months; k++) {
     const m = (start + k) % 12;
     tsum += current.site.tavg[m]; rtot += current.site.prec[m];
   }
-  return { wt: tsum / months, wr: rtot };
+  const dormantTree = s.sp.tree && (s.sp.ktmpr ?? 99) <= -10;
+  const rawRain = (dormantTree || months === 12) ? current.site.annualRain : rtot;
+  const wr = current.site.irrigated ? Math.max(rawRain, s.sp.rain[1]) : rawRain;
+  return { wt: tsum / months, wr };
 }
 
 // One figure, one month axis: temperature above the spine, rain hanging below.
@@ -1503,7 +1509,7 @@ function speciesDetail(id) {
     if (s.factors.raincap) {
       notes.push(tr("Its best growing window fits, but year-round rain here far exceeds this species' rain ceiling, and a perennial stays in the ground all year: half penalty."));
     } else {
-      const rTot = (sp.tree && (sp.ktmpr ?? 99) <= -10) || s.window.months === 12 ? current.site.annualRain : wr;
+      const rTot = wr;
       if (s.factors.rain === 0.5 && rTot > sp.rain[3] && rTot <= sp.rain[3] * 1.15)
         notes.push(tr("Annual rain here sits just above this species' EcoCrop ceiling. Excess-rain limits proxy disease and drainage rather than survival, so it takes a half penalty instead of exclusion."));
     }
