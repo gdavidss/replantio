@@ -1,4 +1,4 @@
-import { aggregateClimate, scoreSpecies, tiebreakScore, grade, gradeColor, monthlyDaylengths, monthlySlopeSolarFactors, monthlyFlatInsolation, maxSoilDepthCm, aggregateSoilProfile, normalizeSearch, koppenGeigerClass, KOPPEN_DESCRIPTIONS, establishmentStrategy, sowingWindow } from "./scoring.js";
+import { aggregateClimate, applyClimateDelta, scoreSpecies, tiebreakScore, grade, gradeColor, monthlyDaylengths, monthlySlopeSolarFactors, monthlyFlatInsolation, maxSoilDepthCm, aggregateSoilProfile, normalizeSearch, koppenGeigerClass, KOPPEN_DESCRIPTIONS, establishmentStrategy, sowingWindow } from "./scoring.js";
 import { DICTS, LANGS, NAMES, LOCALES, MONTHS_ALL } from "./i18n.js";
 import { CLASSES, projection, maturityYears, co2eKgPerTree, co2eTonsPerHa, height, dbhCm, crownDiameterM, crownDisplayM, standDisplay, STEMS_PER_HA } from "./growth.js";
 
@@ -2150,26 +2150,39 @@ function drawTree(g, x, y, r, tree, conifer) {
   g.drawImage(sp.c, x - sp.cx * k, y - sp.cy * k, sp.w * k, sp.w * k);
 }
 
-// ---------- 2040s outlook: rescore the shortlist on a CMIP6 projection ----------
+// ---------- 2040s outlook: rescore the shortlist on a delta-bias-corrected CMIP6 projection ----------
 async function futureOutlook(ctl) {
   const target = current;
   const c = target?.center;
   if (!c || ctl.signal.aborted) return;
   try {
-    const url = `https://climate-api.open-meteo.com/v1/climate?latitude=${c.lat.toFixed(4)}&longitude=${c.lng.toFixed(4)}` +
-      `&start_date=2040-01-01&end_date=2049-12-31&models=MRI_AGCM3_2_S&daily=temperature_2m_mean,temperature_2m_min,precipitation_sum`;
-    const res = await fetch(url, { signal: ctl.signal });
-    if (!res.ok || ctl.signal.aborted) return;
-    const j = await res.json();
-    if (!j.daily?.time?.length || ctl.signal.aborted || current !== target || !current?.site) return;
-    const agg = aggregateClimate(j.daily);
-    // fsite mirrors the current-site context the main rescore() uses (ph,
-    // soil, irrigation) so the 2040s suitability delta is climate-only.
+    const baseUrl = `https://climate-api.open-meteo.com/v1/climate?latitude=${c.lat.toFixed(4)}&longitude=${c.lng.toFixed(4)}` +
+      `&models=MRI_AGCM3_2_S&daily=temperature_2m_mean,temperature_2m_min,precipitation_sum`;
+    const fetchPeriod = (start, end) => fetch(`${baseUrl}&start_date=${start}&end_date=${end}`, { signal: ctl.signal })
+      .then(r => (r.ok ? r.json() : null));
+    const [jHist, jFut] = await Promise.all([
+      fetchPeriod("2015-01-01", "2024-12-31").catch(() => null),
+      fetchPeriod("2040-01-01", "2049-12-31"),
+    ]);
+    if (!jFut?.daily?.time?.length || ctl.signal.aborted || current !== target || !current?.site) return;
+    const aggFut = aggregateClimate(jFut.daily);
+    let aggBase = null;
+    try { if (jHist?.daily?.time?.length) aggBase = aggregateClimate(jHist.daily); } catch { aggBase = null; }
+    // Apply the CMIP6 anomaly (2040-2049 vs MRI-AGCM3-2-S 2015-2024) on top of
+    // observed ERA5 2015-2024 normals so GCM grid/elevation baseline biases do
+    // not contaminate current-vs-2040s score deltas, keeping site soils fixed.
     // Establishment strategy is deliberately NOT recomputed for the 2040s:
     // the CSV establishment_method/sowing_window columns describe the
     // current site only (see the `#` meta line in csvExport()).
-    const fsite = { ...agg, ph: current.site.ph, soil: current.site.soil ?? null, lat: c.lat,
-      irrigated: current.site.irrigated, terrain: current.site.terrain ?? null, radSlope: current.site.radSlope ?? null };
+    const fsite = {
+      ...applyClimateDelta(current.site, aggBase, aggFut),
+      ph: current.site.ph,
+      soil: current.site.soil ?? null,
+      lat: c.lat,
+      irrigated: current.site.irrigated,
+      terrain: current.site.terrain ?? null,
+      radSlope: current.site.radSlope ?? null,
+    };
     current.fsite = fsite;
     for (const s of current.scored) {
       const ev = current.evOpts ? current.evOpts(s.sp) : { native: nativeRegion(s.sp) === true,

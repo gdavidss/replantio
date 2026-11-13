@@ -278,9 +278,12 @@ reads only the class parameters, so each upgrade below is local.
 - **Whole-box soil instead of center point**: ISRIC's WCS endpoint (maps.isric.org)
   returns a small GeoTIFF for a bbox in one call, no rate limit observed; parse with
   geotiff.js. ISRIC recommends WCS over the beta REST API for production.
-- **Future climate**: the Open-Meteo climate API (CMIP6, 1950 to 2050) accepts the
-  same daily variables; run the same scoring against a 2040 window to show how the
-  shortlist shifts.
+- **Future climate (2040s outlook)**: uses Open-Meteo CMIP6 (`MRI-AGCM3-2-S`)
+  via the Delta Change / Anomaly method (Ramirez-Villegas & Jarvis 2010; Hawkins
+  et al. 2013; Maraun 2016): monthly additive temperature anomalies and bounded
+  multiplicative precipitation ratios between `2040–2049` and `2015–2024` are
+  applied on top of observed ERA5 `2015–2024` normals (`applyClimateDelta` in
+  `scoring.js`), removing raw GCM grid elevation and coastline bias.
 - **Suitability heatmap**: score per pixel instead of per box center and paint a
   canvas overlay; the engine is already a pure function of (species, site).
 - **Seedling sourcing**: link each recommended species to nursery directories
