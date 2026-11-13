@@ -1,7 +1,7 @@
 // Self-check for the scoring and growth engines. Run: node test/check.mjs
 import assert from "node:assert";
 import { readFileSync } from "node:fs";
-import { trap, daylength, slopeSolarFactor, monthlySlopeSolarFactors, monthlyFlatInsolation, maxSoilDepthCm, scorePerennialRain, SLOPE_FLAT_DEG, SLOPE_MAX_DEG, MAX_SLOPE_DRAIN_FACTOR, scoreSpecies, tiebreakScore, aggregateClimate, grade, aridityClass, koppenGeigerClass, KOPPEN_DESCRIPTIONS, usdaTextureClass, faoTextureCategory, saxtonRawlsHydrology, aggregateSoilProfile, normalizeSearch, establishmentStrategy, seedReserveAdvantage, sowingWindow, windowLabel } from "../scoring.js";
+import { trap, daylength, slopeSolarFactor, monthlySlopeSolarFactors, monthlyFlatInsolation, maxSoilDepthCm, scorePerennialRain, SLOPE_FLAT_DEG, SLOPE_MAX_DEG, MAX_SLOPE_DRAIN_FACTOR, scoreSpecies, tiebreakScore, aggregateClimate, grade, aridityClass, koppenGeigerClass, KOPPEN_DESCRIPTIONS, usdaTextureClass, faoTextureCategory, saxtonRawlsHydrology, aggregateSoilProfile, normalizeSearch, establishmentStrategy, seedReserveAdvantage, sowingWindow, windowLabel, csvEscape } from "../scoring.js";
 import { CLASSES, height, dbhCm, co2eKgPerTree, crownDiameterM, crownDisplayM, standDisplay, maturityYears } from "../growth.js";
 
 const species = JSON.parse(readFileSync(new URL("../data/species.json", import.meta.url)));
@@ -503,20 +503,17 @@ assert(appSrc.includes("current.fsite.irrigated = site.irrigated"), "rescore mus
 
 // CSV export formula injection sanitization
 {
-  const esc = v => {
-    let s = String(v ?? "");
-    if (/^[\s\t\r\n]*([=+\-@%|\uFF1D\uFF0B\uFF0D\uFF20\uFF5C])/.test(s)) s = "'" + s;
-    return `"${s.replace(/"/g, '""')}"`;
-  };
-  assert.equal(esc("=1+1"), `"'=1+1"`);
-  assert.equal(esc("  @SUM(A1)"), `"'  @SUM(A1)"`);
-  assert.equal(esc("\t-10"), `"'	-10"`);
-  assert.equal(esc("+44"), ` "'+44"`.trim());
-  assert.equal(esc("%cmd%"), `"'%cmd%"`);
-  assert.equal(esc("|pipe"), `"'|pipe"`);
-  assert.equal(esc("\uFF1Dformula"), `"'\uFF1Dformula"`);
-  assert.equal(esc("Quercus"), `"Quercus"`);
-  assert.equal(esc(null), `""`);
+  assert.equal(csvEscape("=1+1"), `"'=1+1"`);
+  assert.equal(csvEscape("  @SUM(A1)"), `"'  @SUM(A1)"`);
+  assert.equal(csvEscape("\t-10"), `"'	-10"`);
+  assert.equal(csvEscape("+44"), ` "'+44"`.trim());
+  assert.equal(csvEscape("%cmd%"), `"'%cmd%"`);
+  assert.equal(csvEscape("|pipe"), `"'|pipe"`);
+  assert.equal(csvEscape("\uFF1Dformula"), `"'\uFF1Dformula"`);
+  assert.equal(csvEscape("Quercus"), `"Quercus"`);
+  assert.equal(csvEscape(null), `""`);
+  assert(appSrc.includes(".map(csvEscape)"), "csvExport must use shared csvEscape helper");
+  assert(!appSrc.includes("const esc ="), "csvExport must not define a local esc copy");
 }
 
 // grading bands
