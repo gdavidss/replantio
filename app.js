@@ -35,9 +35,9 @@ L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Reference/Worl
 
 let SPECIES = [], NATIVES = {}, NATURALIZED = {}, NAMES_PT = {}, SOURCING = null, INVASIVES = {}, NATIVES_L3 = {}, L3_REGIONS = {}, NATIVES_GEO = {};
 // Payload watch: species.json (trait fields for ~2k species) dominates first
-// render at ~675KB; it loads async alongside the optional layers so it never
-// blocks map interaction. Backlog: per-language dynamic import / trait-field
-// splitting — see README. Timed below to track regressions.
+// render at ~1.5 MB uncompressed (~143 KB gzipped); it loads async alongside
+// the optional layers so it never blocks map interaction. Backlog: per-language
+// dynamic import / trait-field splitting — see README.
 const speciesReady = Promise.all([
   fetch("data/species.json").then(r => r.json()).then(j => { SPECIES = j; }),
   fetch("data/natives.json").then(r => r.json()).then(j => { NATIVES = j; }).catch(() => {}), // optional layer
