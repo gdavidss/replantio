@@ -1005,6 +1005,43 @@ assert.equal(recalcDiverg.length, 0, `old/new recalcitrant gates diverge for ${r
   assertMonotonic(curitibaRanked, "Curitiba");
 }
 
+// --- Wet-side monotonicity across [(ROPMX+RMAX)/2, RMAX*1.15] & scored window regime alignment
+{
+  const orduSum = ordu.prec.reduce((a, b) => a + b, 0);
+  const rainSteps = [1000, 1100, 1200, 1368, 1400, 1437, 1610, 1650].map(mm => {
+    const s = { ...ordu, prec: ordu.prec.map(p => p * mm / orduSum) };
+    return { mm, rain: scoreSpecies(hazel, s, { countryNative: true }).factors.rain };
+  });
+  for (let i = 1; i < rainSteps.length; i++) {
+    assert.ok(rainSteps[i].rain <= rainSteps[i - 1].rain,
+      `wet-side rain factor must be monotonically non-increasing: ${rainSteps[i - 1].mm}mm (${rainSteps[i - 1].rain}) -> ${rainSteps[i].mm}mm (${rainSteps[i].rain})`);
+  }
+  assert.equal(rainSteps.find(x => x.mm === 1368).rain, 0.5,
+    "1368 mm holds the 0.5 wet-margin floor rather than dipping below RMAX+1");
+  assert.equal(rainSteps.find(x => x.mm === 1650).rain, 0,
+    "beyond 1.15 * RMAX wet margin still excludes");
+
+  // Dormant trees score annualRain (not warm-window partial rain), and irrigated lifts to ROPMN
+  const hazelScored = scoreSpecies(hazel, ordu, { countryNative: true });
+  close(hazelScored.window.rain, orduSum, 0.1, "Ordu hazelnut window.rain matches annualRain");
+  assert.ok(hazelScored.window.months < 12, "Ordu hazelnut temperature window is <12 months");
+  const oakScored = scoreSpecies(qr, berlin);
+  close(oakScored.window.rain, berlin.prec.reduce((a, b) => a + b, 0), 0.1,
+    "Berlin oak window.rain matches annualRain");
+  const apricot = by("Prunus armeniaca");
+  const apricotIrr = scoreSpecies(apricot, { ...malatya, irrigated: true }, { countryNative: true });
+  assert.equal(apricotIrr.window.rain, apricot.rain[1],
+    "irrigated Malatya apricot window.rain lifts to ROPMN");
+
+  // Short-cycle non-dormant annual keeps its G-month window rain sum
+  const cornScored = scoreSpecies(corn, ordu);
+  const gCorn = Math.max(1, Math.min(12, Math.round(((corn.cycle[0] + corn.cycle[1]) / 2) / 30)));
+  let cornWinSum = 0;
+  for (let k = 0; k < gCorn; k++) cornWinSum += ordu.prec[(cornScored.window.start + k) % 12];
+  close(cornScored.window.rain, cornWinSum, 0.1,
+    "non-dormant annual window.rain equals its G-month seasonal rain");
+}
+
 console.log("all checks passed");
 console.log(`  oak@Berlin ${qrBerlin.score.toFixed(2)} | euc@Berlin ${egBerlin.score.toFixed(2)} | euc@SP ${egSP.score.toFixed(2)}`);
 console.log(`  euc CO2e(10y) ${eucCo2.toFixed(0)} kg | oak CO2e(10y) ${co2eKgPerTree(oakSp, 10).toFixed(1)} kg`);

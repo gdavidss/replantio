@@ -647,7 +647,9 @@ export function scoreSpecies(sp, site, ev = null) {
     let rtot = 0;
     if (dormantTree || G === 12) rtot = annualRain;
     else for (let k = 0; k < G; k++) rtot += site.prec[(best + k) % 12];
-    if (rtot > sp.rain[3] && rtot <= sp.rain[3] * WET_MARGIN) rain = 0.5;
+    // Hold the 0.5 wet-margin floor continuously across [(ROPMX+RMAX)/2, RMAX*1.15]
+    // so approaching RMAX from below never dips below the post-RMAX plateau.
+    if (rtot > sp.rain[2] && rtot <= sp.rain[3] * WET_MARGIN) rain = 0.5;
   }
 
   // Annual-vs-window rain consistency cap for short-cycle perennials (G < 12):
@@ -865,7 +867,8 @@ export function scoreSpecies(sp, site, ev = null) {
     for (let k = 0; k < G; k++) r += site.prec[(best + k) % 12];
     return r;
   })());
-  const fits = [tri(tsum / Gt, ...sp.temp), tri(rainVal, ...sp.rain)];
+  const wt = tsum / Gt;
+  const fits = [tri(wt, ...sp.temp), tri(rainVal, ...sp.rain)];
   if (sp.ph && site.ph != null) fits.push(tri(site.ph, ...sp.ph));
   const fit = fits.reduce((a, b) => a + b, 0) / fits.length;
   const rankScore = tiebreakScore({ sp, fit, gbifCount: ev?.gbifCount ?? 0 }, site, ev?.rankEv ?? ev);
@@ -875,7 +878,7 @@ export function scoreSpecies(sp, site, ev = null) {
     fit,
     rankScore,
     factors: { temp, rain, ph, frost, photo, annual, chill, drain, depth, texture, soilDepth, salinity, drainage, raincap },
-    window: { start: best, months: Gt }
+    window: { start: best, months: Gt, temp: wt, rain: rainVal }
   };
 }
 
