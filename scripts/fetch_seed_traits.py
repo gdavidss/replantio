@@ -16,6 +16,20 @@ Scientific Backbone:
 Source: Seed Information Database (SER / Kew RBG), CC BY 2.0.
 Output: data/seed_traits.json (+ data/seed_traits.meta.json run metadata)
 
+Access Policy & Reproducibility Note:
+data/seed_traits.json is vendored in-repo (generated 2026-10-10T22:31:00Z).
+Do NOT scrape ser-sid.org's JS bundle for the anonymous Supabase key without
+first requesting a bulk export or written OK from SER-INSR / RBG Kew. Live
+execution is therefore gated behind --allow-live-sid or an explicit SID_ANON_KEY
+environment variable.
+
+The 2026-10-10 vendored snapshot already incorporates the recalcitrant PY
+suppression and dormancy rules (verified offline in test/seed_traits_test.py);
+a full live rebuild to populate post-snapshot provenance fields (storage_source,
+tsw_n, tsw_max_min_ratio, kew_presow_raw), distinct SID species_id genus pools,
+and Gramineae/Cruciferae family-prior promotion awaits a SER-INSR bulk export or
+written OK.
+
 Heuristic precedence for dormancy (documented limitation): combinational
 genera > MPD genera > direct Kew presow cues > family cues > genus cues >
 herb lifeform default > ND default. Genus rules intentionally precede Kew
@@ -277,7 +291,10 @@ def enrich_ecological_traits(s, entry):
         entry["serotinous"] = True
     if fam in ("Dipterocarpaceae", "Fagaceae", "Betulaceae", "Pinaceae", "Nothofagaceae"):
         entry["ectomycorrhizal"] = True
-    if genus in ("Rhizophora", "Avicennia", "Bruguiera", "Ceriops", "Kandelia") or fam in ("Rhizophoraceae", "Avicenniaceae"):
+    # Vivipary in Rhizophoraceae is restricted to mangrove tribe Rhizophoreae
+    # (Rhizophora, Bruguiera, Ceriops, Kandelia); inland tribe Gynotrocheae
+    # (e.g. Carallia lucida) is non-viviparous (Tomlinson 2016, doi:10.1017/CBO9781139946575).
+    if genus in ("Rhizophora", "Avicennia", "Bruguiera", "Ceriops", "Kandelia") or fam == "Avicenniaceae":
         entry["viviparous"] = True
 
 def main(argv=None):
@@ -285,7 +302,15 @@ def main(argv=None):
     ap.add_argument("--limit", type=int, default=None, help="process only the first N catalog species (debug)")
     ap.add_argument("--no-write", action="store_true", help="run queries but do not overwrite data files")
     ap.add_argument("--no-cache", action="store_true", help="bypass the data/.kew_cache response cache")
+    ap.add_argument("--allow-live-sid", action="store_true", help="acknowledge SER-INSR / RBG Kew bulk-export or written-OK policy before scraping ser-sid.org")
     args = ap.parse_args(argv)
+
+    if not args.allow_live_sid and not os.environ.get("SID_ANON_KEY", "").strip():
+        raise SystemExit(
+            "Refusing to scrape ser-sid.org's anonymous key: data/seed_traits.json is already vendored. "
+            "Obtain a bulk export or written OK from SER-INSR / RBG Kew and pass --allow-live-sid or set SID_ANON_KEY."
+        )
+
     cache_dir = None if args.no_cache else CACHE_DIR
     with open(SP_PATH) as f:
         species_list = json.load(f)
