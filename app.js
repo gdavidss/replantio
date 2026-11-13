@@ -1531,7 +1531,7 @@ function speciesDetail(id) {
   return `
     <div class="sp-photo" data-hero="${sp.id}" hidden></div>
     <div class="sp-meta"><span class="grade">${tr(grade(s.score))}</span><span class="sep">&middot;</span>${tfmt("{rate} growth &middot; {zone}", { rate: tr(rate), zone: tr(zone) })}</div>
-    <div class="sp-uses">${sp.wet ? `<span class="it wet" title="${tr("Needs standing water or saturated soil year-round (EcoCrop drainage)")}">${tr("wetland")}</span>` : ""}${sp.uses.map(u => `<span class="it">${tr(USE_LABELS[u] ?? u)}</span>`).join("")}</div>
+    <div class="sp-uses">${sp.wet ? `<span class="it wet" title="${tr("Needs standing water or saturated soil year-round (EcoCrop drainage)")}">${tr("wetland")}</span>` : ""}${sp.nfix ? `<span class="it nfix" title="${tr("Biological nitrogen fixer: enriches degraded soils with atmospheric nitrogen")}">${tr("N-fixer")}</span>` : ""}${sp.uses.map(u => `<span class="it">${tr(USE_LABELS[u] ?? u)}</span>`).join("")}</div>
     ${sourcingMarkup(sp)}
     ${sp.tree ? `<div class="growth-fig">${growthSvg(sp)}
       <div class="fig-cap">${tfmt("Reaches ~95% of its max height in ~{n} years (class-level model).", { n: fmt(mat) })}</div>
