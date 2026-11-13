@@ -1005,6 +1005,52 @@ assert.equal(recalcDiverg.length, 0, `old/new recalcitrant gates diverge for ${r
   assertMonotonic(curitibaRanked, "Curitiba");
 }
 
+// --- Verified symbiotic nitrogen fixation (Sprent 2009; Pawlowski & Sirrenberg 2008)
+{
+  const positives = [
+    "Alnus rubra",
+    "Casuarina equisetifolia",
+    "Elaeagnus angustifolia",
+    "Hippophae rhamnoides",
+    "Acacia tortilis",
+    "Trifolium repens",
+    "Chamaecrista nictitans",
+    "Falcataria falcata",
+  ];
+  for (const sci of positives) {
+    const sp = by(sci);
+    assert.ok(sp && sp.nfix === true, `${sci} must carry nfix: true`);
+  }
+
+  // Negative controls: non-nodulating legumes (Caesalpinioideae / Detarioideae / Cercidoideae) + oak
+  const negatives = [
+    "Ceratonia siliqua",
+    "Gleditsia triacanthos",
+    "Tamarindus indica",
+    "Bauhinia variegata",
+    "Hymenaea courbaril",
+    "Senna spectabilis",
+    "Delonix regia",
+    "Parkinsonia aculeata",
+    "Schizolobium parahybum",
+    "Quercus robur",
+  ];
+  for (const sci of negatives) {
+    const sp = by(sci);
+    assert.ok(sp, `${sci} present in catalog`);
+    assert.equal(sp.nfix, undefined, `${sci} must not be marked nfix`);
+  }
+
+  // Every Fabaceae/Leguminosae species in species.json must have its genus curated
+  const nodCsv = readFileSync(new URL("../data/nodulation_traits.csv", import.meta.url), "utf8");
+  const curatedGenera = new Set(nodCsv.trim().split(/\r?\n/).slice(1).map(l => l.split(",")[0].trim()));
+  const uncurated = species
+    .filter(s => s.family === "Fabaceae" || s.family === "Leguminosae")
+    .filter(s => !curatedGenera.has(s.sci.split(" ")[0]))
+    .map(s => s.sci);
+  assert.deepEqual(uncurated, [], "all Fabaceae/Leguminosae genera in species.json are curated");
+}
+
 console.log("all checks passed");
 console.log(`  oak@Berlin ${qrBerlin.score.toFixed(2)} | euc@Berlin ${egBerlin.score.toFixed(2)} | euc@SP ${egSP.score.toFixed(2)}`);
 console.log(`  euc CO2e(10y) ${eucCo2.toFixed(0)} kg | oak CO2e(10y) ${co2eKgPerTree(oakSp, 10).toFixed(1)} kg`);
