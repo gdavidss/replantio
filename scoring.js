@@ -1209,6 +1209,14 @@ export function establishmentStrategy(sp, site = null, optWin = null) {
   // Functional prior helpers needed for universal directives
   const isLegume = sp.family === "Fabaceae" || sp.family === "Leguminosae";
   const isRecalcitrant = (pDsLo != null ? pDsLo >= 0.80 : pDs >= 0.80) || storage === "recalcitrant";
+  // Viviparous & cryptoviviparous mangroves (Rhizophoraceae tribe Rhizophoreae:
+  // Rhizophora, Bruguiera, Ceriops, Kandelia; and Avicennia — Tomlinson 2016,
+  // doi:10.1017/CBO9781139946575, Table 5.1; Farnsworth & Farrant 1998,
+  // doi:10.2307/2446558): propagules germinate on the maternal tree and are
+  // desiccation-sensitive even where Kew SID lacks a species-level row
+  // (Avicennia germinans, A. officinalis). Gated on genus so terrestrial
+  // inland Rhizophoraceae (Carallia lucida) stay out.
+  const isViviparousMangrove = sp.viviparous === true && /^(Rhizophora|Bruguiera|Ceriops|Kandelia|Avicennia)\b/.test(sp.sci ?? "");
 
   // Seed Dormancy Directives (Baskin & Baskin 2014) apply across lifeforms
   const dormancyDirectives = [];
@@ -1217,7 +1225,7 @@ export function establishmentStrategy(sp, site = null, optWin = null) {
   // has no such guard upstream (it flagged litchi, rambutan, akee, Agathis),
   // so cold stratification is never advised for them here. (EcoCrop TMIN is a
   // growth threshold, not seed chilling tolerance: Caragana has TMIN 10.)
-  const chillingSensitive = isRecalcitrant || (sp.gclass?.startsWith("tropical") && (sp.ktmpr ?? sp.ktmp ?? 0) > -6);
+  const chillingSensitive = isRecalcitrant || isViviparousMangrove || (sp.gclass?.startsWith("tropical") && (sp.ktmpr ?? sp.ktmp ?? 0) > -6);
   if (chillingSensitive && (dormancy === "PY+PD" || presow === "scarification_plus_cold_stratification")) {
     dormancyDirectives.push("Physical seed dormancy (PY): Hot water or mechanical scarification recommended before sowing.");
   } else if (chillingSensitive && (dormancy === "PD" || dormancy === "MPD" || presow === "cold_stratification" || presow === "warm_plus_cold_stratification")) {
@@ -1375,7 +1383,7 @@ export function establishmentStrategy(sp, site = null, optWin = null) {
 
   // Tropical thin-coated fleshy recalcitrant seeds (Theobroma cacao, rubber, dipterocarps)
   const isTropical = sp.gclass && sp.gclass.startsWith("tropical");
-  const isTropicalFleshyRecalcitrant = isRecalcitrant && !isLargeNut && isTropical;
+  const isTropicalFleshyRecalcitrant = (isRecalcitrant || isViviparousMangrove) && !isLargeNut && isTropical;
 
   // Micro-seeded species. Continuous reserve advantage at the 0.2 low-reserve
   // boundary (~7 g/1000) instead of the old 2 g cliff. Direction follows the

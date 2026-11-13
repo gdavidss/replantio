@@ -828,6 +828,36 @@ const recalcDiverg = species
 if (recalcDiverg.length) console.error("recalcitrant gate divergence:", recalcDiverg);
 assert.equal(recalcDiverg.length, 0, `old/new recalcitrant gates diverge for ${recalcDiverg.length} species: ${recalcDiverg.join("; ")}`);
 
+// 13. Viviparous mangrove propagule guild consistency: all 9 true mangroves
+// unify on §B2 under humid tropical conditions, while inland Carallia lucida stays out.
+{
+  const trueMangroves = [
+    "Rhizophora mangle",
+    "Rhizophora mucronata",
+    "Rhizophora stylosa",
+    "Bruguiera gymnorrhiza",
+    "Ceriops decandra",
+    "Ceriops tagal",
+    "Avicennia germinans",
+    "Avicennia marina",
+    "Avicennia officinalis",
+  ];
+  for (const sci of trueMangroves) {
+    const sp = by(sci);
+    assert.ok(sp && sp.viviparous === true, `${sci} must carry viviparous: true`);
+    const st = establishmentStrategy(sp, { ai: 1.5, koppen: "Af" });
+    assert.equal(st.method, "both", `${sci} must resolve to §B2`);
+    assert.equal(st.labelKey, "Nursery seedlings (preferred) \u00b7 Direct seeding conditional", `${sci} labelKey`);
+    assert.equal(st.confidence, "low", `${sci} confidence`);
+  }
+  const carallia = by("Carallia lucida");
+  assert.ok(carallia && carallia.viviparous === true, "Carallia lucida carries viviparous: true");
+  const caralliaSt = establishmentStrategy(carallia, { ai: 1.5, koppen: "Af" });
+  assert.notEqual(caralliaSt.labelKey, "Nursery seedlings (preferred) \u00b7 Direct seeding conditional",
+    "inland Carallia lucida must not route to §B2");
+  assert.equal(caralliaSt.method, "seedling", "inland Carallia lucida stays seedling");
+}
+
 
 // --- Annual-vs-window rain consistency cap for G<12 perennials (#26, narrowed):
 // rate-consistent (annual rain vs RMAX * 12/G), waived by exact-site native

@@ -647,4 +647,34 @@ for (const lang of allLangs) {
 }
 console.log(`  PASS: "~{n} months (rainy season)" present in all 11 dictionaries`);
 
+// 10j. Viviparous mangrove propagule guild consistency: all 9 true catalog
+// mangroves resolve uniformly to §B2 under humid tropical conditions, while
+// inland terrestrial Carallia lucida (Rhizophoraceae) stays out of §B2.
+const trueMangroves = [
+  "Rhizophora mangle",
+  "Rhizophora mucronata",
+  "Rhizophora stylosa",
+  "Bruguiera gymnorrhiza",
+  "Ceriops decandra",
+  "Ceriops tagal",
+  "Avicennia germinans",
+  "Avicennia marina",
+  "Avicennia officinalis",
+];
+for (const sci of trueMangroves) {
+  const sp = spBySci.get(sci);
+  assert(sp && sp.viviparous === true, `${sci} must exist with viviparous: true`);
+  const res = establishmentStrategy(sp, { ai: 1.5, koppen: "Af" });
+  assert.equal(res.method, "both", `${sci} must route to §B2 conditional pathway`);
+  assert.equal(res.labelKey, "Nursery seedlings (preferred) \u00b7 Direct seeding conditional", `${sci} labelKey mismatch`);
+  assert.equal(res.confidence, "low", `${sci} confidence must be low`);
+}
+const carallia = spBySci.get("Carallia lucida");
+assert(carallia && carallia.viviparous === true, "Carallia lucida must exist with viviparous: true");
+const caralliaRes = establishmentStrategy(carallia, { ai: 1.5, koppen: "Af" });
+assert.notEqual(caralliaRes.labelKey, "Nursery seedlings (preferred) \u00b7 Direct seeding conditional",
+  "Inland Carallia lucida must NOT route to §B2");
+assert.equal(caralliaRes.method, "seedling", "Inland Carallia lucida must stay on seedling standard pathway");
+console.log(`  PASS: All 9 viviparous mangrove species unify on §B2; inland Carallia lucida excluded`);
+
 console.log("\nALL ESTABLISHMENT BENCHMARKS PASSED SUCCESSFULLY!");
