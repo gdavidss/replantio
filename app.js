@@ -1,4 +1,4 @@
-import { aggregateClimate, scoreSpecies, tiebreakScore, grade, gradeColor, monthlyDaylengths, monthlySlopeSolarFactors, monthlyFlatInsolation, maxSoilDepthCm, aggregateSoilProfile, normalizeSearch, koppenGeigerClass, KOPPEN_DESCRIPTIONS, establishmentStrategy, sowingWindow } from "./scoring.js";
+import { aggregateClimate, scoreSpecies, tiebreakScore, grade, gradeColor, monthlyDaylengths, monthlySlopeSolarFactors, monthlyFlatInsolation, maxSoilDepthCm, aggregateSoilProfile, normalizeSearch, koppenGeigerClass, KOPPEN_DESCRIPTIONS, establishmentStrategy, sowingWindow, csvEscape } from "./scoring.js";
 import { DICTS, LANGS, NAMES, LOCALES, MONTHS_ALL } from "./i18n.js";
 import { CLASSES, projection, maturityYears, co2eKgPerTree, co2eTonsPerHa, height, dbhCm, crownDiameterM, crownDisplayM, standDisplay, STEMS_PER_HA } from "./growth.js";
 
@@ -2648,11 +2648,6 @@ function zipStore(files) {
 // ---------- export: full factor matrix as CSV ----------
 function csvExport() {
   if (!current) return;
-  const esc = v => {
-    let s = String(v ?? "");
-    if (/^[\s\t\r\n]*([=+\-@%|\uFF1D\uFF0B\uFF0D\uFF20\uFF5C])/.test(s)) s = "'" + s;
-    return `"${s.replace(/"/g, '""')}"`;
-  };
   // CSV column contract: the v2 columns keep their positions (downstream
   // parsers read by position); v3 APPENDS establishment_method,
   // establishment_confidence, sowing_window and irrigated after `uses`.
@@ -2669,7 +2664,7 @@ function csvExport() {
       .map(v => v == null ? "" : (+v).toFixed(3)),
     nativeHere(s.sp) ?? "", s.sp.gclass, s.sp.uses.join("|"), s.strat?.method ?? "", s.strat?.confidence ?? "", s.strat?.sowingWindow?.label || (s.strat?.sowingWindow?.length ? `~${s.strat.sowingWindow.length} mo` : ""),
     current.site.irrigated ? "true" : "false",
-  ].map(esc).join(","));
+  ].map(csvEscape).join(","));
   const c = critState();
   const meta = `# Replantio v3 ${new Date().toISOString().slice(0, 10)} · ${current.center.lat.toFixed(4)},${current.center.lng.toFixed(4)} · ${current.ha.toFixed(1)} ha\n`
     + `# establishment_method/establishment_confidence/sowing_window describe the current site, not the 2040s outlook\n`
