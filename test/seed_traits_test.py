@@ -3,15 +3,18 @@
 
 Run: python3 test/seed_traits_test.py
 """
+import os
 import pathlib
 import statistics
 import sys
+import urllib.request
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "scripts"))
 
 from fetch_seed_traits import (  # noqa: E402
     clean_binomial,
     classify_dormancy,
+    main as fetch_main,
     normalize_storage,
     upper_median,
     _assert_anon_role,
@@ -191,6 +194,14 @@ def test_enrich_ecological_traits():
     enrich_ecological_traits(_sp("Rhizophora mangle", "Rhizophoraceae"), e3)
     assert e3.get("viviparous") is True
 
+    e3_av = {}
+    enrich_ecological_traits(_sp("Avicennia germinans", "Verbenaceae"), e3_av)
+    assert e3_av.get("viviparous") is True
+
+    e3_carallia = {}
+    enrich_ecological_traits(_sp("Carallia lucida", "Rhizophoraceae"), e3_carallia)
+    assert "viviparous" not in e3_carallia, e3_carallia
+
     e4 = {}
     enrich_ecological_traits(_sp(""), e4)
     assert e4 == {}
@@ -262,6 +273,56 @@ def test_seed_interval_fields():
         assert "outside [0, 1]" in str(ex)
 
 
+def test_live_sid_gate():
+    prev_key = os.environ.pop("SID_ANON_KEY", None)
+    orig_urlopen = urllib.request.urlopen
+
+    def _forbid_network(*args, **kwargs):
+        raise AssertionError("Network request attempted despite missing --allow-live-sid / SID_ANON_KEY")
+
+    urllib.request.urlopen = _forbid_network
+    try:
+        try:
+            fetch_main([])
+            assert False, "Expected SystemExit when --allow-live-sid and SID_ANON_KEY are both absent"
+        except SystemExit as ex:
+            assert "SER-INSR" in str(ex), str(ex)
+    finally:
+        urllib.request.urlopen = orig_urlopen
+        if prev_key is not None:
+            os.environ["SID_ANON_KEY"] = prev_key
+
+
+def test_vendored_invariants():
+    root = pathlib.Path(__file__).resolve().parent.parent
+    with open(root / "data" / "species.json") as f:
+        species_list = json.load(f)
+    with open(root / "data" / "seed_traits.json") as f:
+        vendored_traits = json.load(f)
+
+    ecological_flags = ("epicotyl_dormancy", "serotinous", "ectomycorrhizal", "viviparous")
+
+    for s in species_list:
+        sid = str(s["id"])
+        v = vendored_traits.get(sid)
+        assert v is not None, f"Missing seed_traits entry for species {sid} ({s.get('sci')})"
+
+        if v.get("storage") == "recalcitrant":
+            assert v.get("dormancy") not in ("PY", "PY+PD"), (sid, s.get("sci"), v)
+            assert v.get("presow") != "scarification", (sid, s.get("sci"), v)
+
+        dorm_src = v.get("dormancy_source") or ""
+        if not dorm_src.startswith("Kew SID"):
+            expected_dorm = classify_dormancy(s, kew_presow=None, storage=v.get("storage"))
+            actual_dorm = (v.get("dormancy"), v.get("presow"), dorm_src)
+            assert expected_dorm == actual_dorm, (sid, s.get("sci"), expected_dorm, actual_dorm)
+
+        cur_eco = {}
+        enrich_ecological_traits(s, cur_eco)
+        for flag in ecological_flags:
+            assert bool(cur_eco.get(flag)) == bool(v.get(flag)), (sid, s.get("sci"), flag, cur_eco, v)
+
+
 if __name__ == "__main__":
     test_assert_anon_role()
     test_clean_binomial()
@@ -274,4 +335,6 @@ if __name__ == "__main__":
     test_upper_median()
     test_p_ds_interval()
     test_seed_interval_fields()
+    test_live_sid_gate()
+    test_vendored_invariants()
     print("all seed_traits unit tests passed")
