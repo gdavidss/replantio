@@ -1,7 +1,7 @@
 // Self-check for the scoring and growth engines. Run: node test/check.mjs
 import assert from "node:assert";
 import { readFileSync } from "node:fs";
-import { trap, daylength, slopeSolarFactor, monthlySlopeSolarFactors, monthlyFlatInsolation, maxSoilDepthCm, scorePerennialRain, SLOPE_FLAT_DEG, SLOPE_MAX_DEG, MAX_SLOPE_DRAIN_FACTOR, scoreSpecies, tiebreakScore, aggregateClimate, grade, aridityClass, koppenGeigerClass, KOPPEN_DESCRIPTIONS, usdaTextureClass, faoTextureCategory, saxtonRawlsHydrology, aggregateSoilProfile, normalizeSearch, establishmentStrategy, seedReserveAdvantage, sowingWindow, windowLabel } from "../scoring.js";
+import { trap, daylength, slopeSolarFactor, monthlySlopeSolarFactors, monthlyFlatInsolation, maxSoilDepthCm, scorePerennialRain, SLOPE_FLAT_DEG, SLOPE_MAX_DEG, MAX_SLOPE_DRAIN_FACTOR, scoreSpecies, tiebreakScore, aggregateClimate, applyClimateDelta, grade, aridityClass, koppenGeigerClass, KOPPEN_DESCRIPTIONS, usdaTextureClass, faoTextureCategory, saxtonRawlsHydrology, aggregateSoilProfile, normalizeSearch, establishmentStrategy, seedReserveAdvantage, sowingWindow, windowLabel } from "../scoring.js";
 import { CLASSES, height, dbhCm, co2eKgPerTree, crownDiameterM, crownDisplayM, standDisplay, maturityYears } from "../growth.js";
 
 const species = JSON.parse(readFileSync(new URL("../data/species.json", import.meta.url)));
@@ -1003,6 +1003,79 @@ assert.equal(recalcDiverg.length, 0, `old/new recalcitrant gates diverge for ${r
     assert.equal(nonNativeAhead.length, 0, `non-natives outrank native Araucaria in its tier: ${nonNativeAhead.join(", ")} (Araucaria #${araucariaRank})`);
   }
   assertMonotonic(curitibaRanked, "Curitiba");
+}
+
+// --- CMIP6 2040s delta-change bias correction (Ramirez-Villegas & Jarvis 2010; Maraun 2016)
+{
+  const era5 = { ...ordu, meanTemp: ordu.tavg.reduce((a, b) => a + b, 0) / 12, annualRain: ordu.prec.reduce((a, b) => a + b, 0) };
+  // 1. Identity under zero GCM change despite systematic GCM cold/wet grid bias
+  const biasedGcmBase = {
+    tavg: era5.tavg.map(t => t - 3.0),
+    tmin: era5.tmin.map(t => t - 3.0),
+    prec: era5.prec.map(p => p + 25),
+    absMin: era5.absMin - 3.0,
+  };
+  const zeroChange = applyClimateDelta(era5, biasedGcmBase, biasedGcmBase);
+  assert.deepEqual(zeroChange.tavg, era5.tavg, "zero GCM anomaly preserves ERA5 tavg exactly");
+  assert.deepEqual(zeroChange.tmin, era5.tmin, "zero GCM anomaly preserves ERA5 tmin exactly");
+  assert.deepEqual(zeroChange.prec, era5.prec, "zero GCM anomaly preserves ERA5 prec exactly");
+  assert.equal(zeroChange.absMin, era5.absMin, "zero GCM anomaly preserves ERA5 absMin");
+  assert.equal(
+    scoreSpecies(hazel, zeroChange, { countryNative: true }).score,
+    scoreSpecies(hazel, era5, { countryNative: true }).score,
+    "identity invariance keeps suitability score unchanged when GCM shows zero delta"
+  );
+
+  // 2. Unbiased GCM equivalence (when gcmBase matches ERA5, delta matches gcmFuture)
+  const gcmFutUnbiased = {
+    tavg: era5.tavg.map(t => t + 1.2),
+    tmin: era5.tmin.map(t => t + 1.1),
+    prec: era5.prec.map(p => p * 0.9),
+    absMin: era5.absMin + 1.5,
+  };
+  const equiv = applyClimateDelta(era5, era5, gcmFutUnbiased);
+  for (let m = 0; m < 12; m++) {
+    close(equiv.tavg[m], gcmFutUnbiased.tavg[m], 1e-6, `unbiased month ${m} tavg`);
+    close(equiv.prec[m], gcmFutUnbiased.prec[m], 1e-6, `unbiased month ${m} prec`);
+  }
+  close(equiv.absMin, gcmFutUnbiased.absMin, 1e-6, "unbiased absMin");
+
+  // 3. Ordu real-world wet-bias removal: raw MRI-AGCM3-2-S reads ~1420 mm/yr (>1400 mm hazel RMAX),
+  // while its own 2015-2024 baseline reads 1426 mm/yr (-0.4% change) over ERA5 1140 mm/yr.
+  const scaleTo = (arr, targetSum) => {
+    const s = arr.reduce((a, b) => a + b, 0);
+    return arr.map(v => v * targetSum / s);
+  };
+  const mriBaseOrdu = {
+    tavg: era5.tavg.map(t => t - 0.9),
+    tmin: era5.tmin.map(t => t - 0.9),
+    prec: scaleTo(era5.prec, 1426),
+    absMin: -7.8,
+  };
+  const mriFutOrdu = {
+    tavg: era5.tavg.map(t => t - 0.1),
+    tmin: era5.tmin.map(t => t - 0.1),
+    prec: scaleTo(era5.prec, 1420),
+    absMin: -6.4,
+  };
+  const ordu2040 = applyClimateDelta(era5, mriBaseOrdu, mriFutOrdu);
+  close(ordu2040.meanTemp, era5.meanTemp + 0.8, 0.05, "Ordu 2040s applies +0.8 C warming to ERA5 baseline");
+  close(ordu2040.annualRain, 1135.2, 1.0, "Ordu 2040s avoids raw 1420 mm GCM wet bias");
+  assert.equal(scoreSpecies(hazel, mriFutOrdu, { countryNative: true }).factors.rain, 0.5,
+    "raw biased GCM falsely pushes Ordu hazelnut past 1400 mm RMAX");
+  assert.ok(scoreSpecies(hazel, ordu2040, { countryNative: true }).factors.rain > 0.85,
+    "delta correction prevents spurious 2040s rain exceedance on Ordu hazelnut");
+
+  // 4. Dry-month ratio clamp ([0.25x, 3.0x] with 1 mm floor) & missing-baseline fallback
+  const dryGcmBase = { tavg: Array(12).fill(20), tmin: Array(12).fill(15), prec: [2, 0.2, ...Array(10).fill(50)], absMin: 5 };
+  const dryGcmFut = { tavg: Array(12).fill(21), tmin: Array(12).fill(16), prec: [0, 15, ...Array(10).fill(50)], absMin: 6 };
+  const dryEra5 = { ...era5, prec: [10, 10, ...Array(10).fill(50)] };
+  const clamped = applyClimateDelta(dryEra5, dryGcmBase, dryGcmFut);
+  assert.equal(clamped.prec[0], 5, "1/(2) ratio yields 0.5x cleanly (bounded >= 0.25x)");
+  assert.equal(clamped.prec[1], 30, "15/1 extreme wet jump capped at 3.0x");
+  assert.ok(clamped.prec.every(Number.isFinite) && clamped.koppen != null, "bounded prec & valid koppen");
+  const fallback = applyClimateDelta(era5, null, mriFutOrdu);
+  assert.deepEqual(fallback.tavg, mriFutOrdu.tavg, "null gcmBase degrades gracefully to gcmFuture");
 }
 
 console.log("all checks passed");
