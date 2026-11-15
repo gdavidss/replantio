@@ -1663,3 +1663,13 @@ export function establishmentStrategy(sp, site = null, optWin = null) {
   };
 }
 
+// CSV cell serializer with spreadsheet formula-injection guard: prefixes
+// leading formula triggers (=, +, -, @, %, |, and fullwidth variants, even
+// after leading whitespace/control chars) with a single quote before
+// RFC 4180 double-quote wrapping.
+export function csvEscape(v) {
+  let s = String(v ?? "");
+  if (/^[\s\t\r\n]*([=+\-@%|\uFF1D\uFF0B\uFF0D\uFF20\uFF5C])/.test(s)) s = "'" + s;
+  return `"${s.replace(/"/g, '""')}"`;
+}
+
