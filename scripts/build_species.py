@@ -15,6 +15,7 @@ OUT = ROOT / "data" / "species.json"
 NUM = ["TOPMN", "TOPMX", "TMIN", "TMAX", "ROPMN", "ROPMX", "RMIN", "RMAX",
        "PHOPMN", "PHOPMX", "PHMIN", "PHMAX", "KTMP", "KTMPR", "GMIN", "GMAX", "ALTMX"]
 SEED_TRAITS_PATH = ROOT / "data" / "seed_traits.json"
+NODULATION_SRC = ROOT / "data" / "nodulation_traits.csv"
 
 # Growth-rate class by genus. Heuristic: pioneers/plantation species vs
 # late-successional hardwoods; everything else defaults to medium.
@@ -299,6 +300,22 @@ def seed_interval_fields(st_or_code, seed_traits=None, code=None):
     return {"p_ds_lo": lo, "p_ds_hi": hi}
 
 
+def load_nodulation_traits():
+    """Load verified biological nitrogen fixation (BNF) traits by genus.
+
+    Sources: Janet I. Sprent (2009) Legume Nodulation: A Global Perspective;
+    Pawlowski & Sirrenberg (2008) Actinorhizal Symbioses.
+    """
+    if not NODULATION_SRC.exists():
+        raise SystemExit(f"{NODULATION_SRC} not found — refusing build without verified nodulation table.")
+    traits = {}
+    with open(NODULATION_SRC, encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            genus = row["genus"].strip()
+            traits[genus] = (row["nodulates"].strip().lower() == "yes")
+    return traits
+
+
 def main():
     if not SEED_TRAITS_PATH.exists():
         raise SystemExit(f"{SEED_TRAITS_PATH} not found — refusing EcoCrop-only build (run scripts/fetch_seed_traits.py first).")
@@ -310,6 +327,8 @@ def main():
             raise SystemExit(f"Cannot load {SEED_TRAITS_PATH}: {ex}")
         if not isinstance(seed_traits, dict):
             raise SystemExit(f"{SEED_TRAITS_PATH} must be a JSON object keyed by species id")
+
+    nodulation_traits = load_nodulation_traits()
 
     # ponytail: cp1252 per research; a few source bytes are pre-damaged, replace them
     with open(SRC, encoding="cp1252", errors="replace") as f:
@@ -405,6 +424,12 @@ def main():
 
         shade = ("shade" in (r.get("LIOPMN") or "").lower() or "shade" in (r.get("LIOPMX") or "").lower())
 
+        family = (r["FAMNAME"] or "").split(":")[-1]
+        genus = sci.split()[0]
+        if family in {"Fabaceae", "Leguminosae"} and genus not in nodulation_traits:
+            raise SystemExit(f"Uncurated Fabaceae genus {genus!r} ({sci}); add to data/nodulation_traits.csv")
+        is_nfix = bool(nodulation_traits.get(genus, False))
+
         # Seed-trait merge: st is bound once per row (entries are dicts keyed
         # by species id). storage=None (heterogeneous/uncertain) drops the
         # storage key — no false binary — while p_ds is always kept: every
@@ -418,7 +443,7 @@ def main():
             "sci": sci,
             "common": names[0] if names else sci,
             "aka": names[1:],
-            "family": (r["FAMNAME"] or "").split(":")[-1],
+            "family": family,
             "lifo": lifo_val,
             "uses": use_list,
             "temp": [vals["TMIN"], vals["TOPMN"], vals["TOPMX"], vals["TMAX"]],
@@ -426,6 +451,8 @@ def main():
             "ph": ph,
             "ktmp": vals["KTMP"],       # killing temp, early growth
             "ktmpr": vals["KTMPR"],      # killing temp, dormant season
+            # verified symbiotic nitrogen fixation (Sprent 2009; Pawlowski & Sirrenberg 2008)
+            **({"nfix": True} if is_nfix else {}),
             # obligate wetland: EcoCrop absolute drainage tolerates ONLY saturated soil
             **({"wet": True} if (r.get("DRAR") or r.get("DRA") or "").strip() == "poorly (saturated >50% of year)" else {}),
             # annual-capable: frost is tested on the growing window, not the winter

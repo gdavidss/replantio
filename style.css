@@ -489,6 +489,7 @@ html, body { margin: 0; height: 100%; background: #0a0d0b; color: var(--text); }
 .nearby.otherreg { color: var(--amber); font-weight: 400; font-style: normal; } /* lives on the sci line */
 .nearby.mgnl { color: var(--amber); font-weight: 400; opacity: .85; } /* sub-suitable rows say so */
 .it.wet { color: var(--water); }
+.it.nfix { color: var(--accent); }
 /* the acquisition column: the one thing on the row that converts intent to action */
 .sp-get { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; flex-shrink: 0; }
 .sp-get .spd { font-size: 10px; color: var(--faint); letter-spacing: .01em; }

@@ -311,6 +311,8 @@ const PT = {
   "Steep slope: direct seeding at risk of erosion — use contour pits or prefer seedlings": "Declive acentuado: semeadura direta com risco de erosão — use covas em curva de nível ou prefira mudas",
   "Aridity unknown: no moisture series is available for this site, so water-driven gates cannot fire; establishment advice is capped at low confidence.": "Aridez desconhecida: sem série de umidade disponível para o local, os filtros hídricos não operam; recomendação de estabelecimento limitada a baixa confiança.",
   "~{n} months (rainy season)": "~{n} meses (estação chuvosa)",
+  "N-fixer": "fixadora de N",
+  "Biological nitrogen fixer: enriches degraded soils with atmospheric nitrogen": "Fixadora biológica de nitrogênio: enriquece solos degradados com nitrogênio atmosférico",
 };
 
 const ES = {
@@ -610,6 +612,8 @@ const ES = {
   "Steep slope: direct seeding at risk of erosion — use contour pits or prefer seedlings": "Pendiente pronunciada: siembra directa con riesgo de erosión — use hoyos en curvas de nivel o prefiera plantones",
   "Aridity unknown: no moisture series is available for this site, so water-driven gates cannot fire; establishment advice is capped at low confidence.": "Aridez desconocida: no hay serie de humedad disponible para este sitio, por lo que los filtros hídricos no operan; la recomendación se limita a confianza baja.",
   "~{n} months (rainy season)": "~{n} meses (temporada de lluvias)",
+  "N-fixer": "fijadora de N",
+  "Biological nitrogen fixer: enriches degraded soils with atmospheric nitrogen": "Fijadora biológica de nitrógeno: enriquece suelos degradados con nitrógeno atmosférico",
 };
 
 const FR = {
@@ -909,6 +913,8 @@ const FR = {
   "Steep slope: direct seeding at risk of erosion — use contour pits or prefer seedlings": "Pente raide : semis direct exposé à l'érosion — utiliser des poquets de niveau ou préférer des plants",
   "Aridity unknown: no moisture series is available for this site, so water-driven gates cannot fire; establishment advice is capped at low confidence.": "Aridité inconnue : aucune série hydrique disponible pour ce site, les seuils hydriques ne peuvent s'activer ; conseil d'établissement plafonné à faible confiance.",
   "~{n} months (rainy season)": "~{n} mois (saison des pluies)",
+  "N-fixer": "fixateur d’azote",
+  "Biological nitrogen fixer: enriches degraded soils with atmospheric nitrogen": "Fixateur biologique d’azote : enrichit les sols dégradés avec l’azote atmosphérique",
 };
 
 // placeholders: filled with native-quality translations (zh ja ru id hi de sw)
@@ -1280,6 +1286,8 @@ const ZH = {
   "Steep slope: direct seeding at risk of erosion — use contour pits or prefer seedlings": "陡坡：直接播种存在侵蚀风险——建议采用等高线鱼鳞坑或优先选用苗木",
   "Aridity unknown: no moisture series is available for this site, so water-driven gates cannot fire; establishment advice is capped at low confidence.": "干旱度未知：该地点缺乏水分时间序列数据，水分驱动阈值无法激活；建立策略建议限制为低置信度。",
   "~{n} months (rainy season)": "约{n}个月（雨季）",
+  "N-fixer": "固氮植物",
+  "Biological nitrogen fixer: enriches degraded soils with atmospheric nitrogen": "生物固氮植物：利用大气中的氮丰富退化土壤",
 };
 const JA = {
   "Analyze": "分析する",
@@ -1649,6 +1657,8 @@ const JA = {
   "Steep slope: direct seeding at risk of erosion — use contour pits or prefer seedlings": "急傾斜地：直播は土壌侵食リスクあり——等高線植栽穴（コンターピット）を用いるかコンテナ苗を優先",
   "Aridity unknown: no moisture series is available for this site, so water-driven gates cannot fire; establishment advice is capped at low confidence.": "乾燥度不明：この地点の水分時系列データがないため水分制限が適用されません。定着アドバイスは低信頼度にとどまります。",
   "~{n} months (rainy season)": "約{n}か月（雨季）",
+  "N-fixer": "窒素固定植物",
+  "Biological nitrogen fixer: enriches degraded soils with atmospheric nitrogen": "生物学的窒素固定植物：大気中の窒素を取り込み荒廃した土壌を肥沃化",
 };
 const RU = {
   "Analyze": "Анализировать",
@@ -2018,6 +2028,8 @@ const RU = {
   "Steep slope: direct seeding at risk of erosion — use contour pits or prefer seedlings": "Крутой склон: прямой посев подвержен эрозии — используйте террасные лунки или отдайте предпочтение саженцам",
   "Aridity unknown: no moisture series is available for this site, so water-driven gates cannot fire; establishment advice is capped at low confidence.": "Аридность неизвестна: для этой локации нет данных о влажности, водные ограничения не действуют; рекомендация ограничена низкой степенью уверенности.",
   "~{n} months (rainy season)": "~{n} мес. (сезон дождей)",
+  "N-fixer": "азотфиксатор",
+  "Biological nitrogen fixer: enriches degraded soils with atmospheric nitrogen": "Биологический азотфиксатор: обогащает деградированные почвы атмосферным азотом",
 };
 const ID = {
   "Analyze": "Analisis",
@@ -2387,6 +2399,8 @@ const ID = {
   "Steep slope: direct seeding at risk of erosion — use contour pits or prefer seedlings": "Lereng curam: penaburan langsung berisiko erosi — gunakan lubang kontur atau utamakan bibit polibag",
   "Aridity unknown: no moisture series is available for this site, so water-driven gates cannot fire; establishment advice is capped at low confidence.": "Tingkat kegersangan tidak diketahui: tidak ada data kelembapan untuk lokasi ini sehingga batasan air tidak aktif; saran pembentukan dibatasi pada tingkat keyakinan rendah.",
   "~{n} months (rainy season)": "~{n} bulan (musim hujan)",
+  "N-fixer": "pengikat N",
+  "Biological nitrogen fixer: enriches degraded soils with atmospheric nitrogen": "Pengikat nitrogen biologis: memperkaya tanah terdegradasi dengan nitrogen atmosfer",
 };
 const HI = {
   "Analyze": "विश्लेषण करें",
@@ -2756,6 +2770,8 @@ const HI = {
   "Steep slope: direct seeding at risk of erosion — use contour pits or prefer seedlings": "तीव्र ढलान: सीधे बीजारोपण में मिट्टी के कटाव का जोखिम — समोच्च गड्ढों (कंटूर पिट्स) का उपयोग करें या पौध को प्राथमिकता दें",
   "Aridity unknown: no moisture series is available for this site, so water-driven gates cannot fire; establishment advice is capped at low confidence.": "शुष्कता अज्ञात: इस स्थल के लिए कोई नमी श्रृंखला उपलब्ध नहीं है, अतः जल-आधारित सीमाएं लागू नहीं हो सकीं; स्थापना सलाह निम्न विश्वसनीयता तक सीमित है।",
   "~{n} months (rainy season)": "~{n} माह (वर्षा ऋतु)",
+  "N-fixer": "नाइट्रोजन स्थिरीकरण",
+  "Biological nitrogen fixer: enriches degraded soils with atmospheric nitrogen": "जैविक नाइट्रोजन स्थिरीकरण: वायुमंडलीय नाइट्रोजन से निम्नीकृत मिट्टी को समृद्ध करता है",
 };
 const DE = {
   "Analyze": "Analysieren",
@@ -3125,6 +3141,8 @@ const DE = {
   "Steep slope: direct seeding at risk of erosion — use contour pits or prefer seedlings": "Steilhang: Direktsaat erosionsgefährdet — Konturpflanzlöcher nutzen oder Containerpflanzen bevorzugen",
   "Aridity unknown: no moisture series is available for this site, so water-driven gates cannot fire; establishment advice is capped at low confidence.": "Aridität unbekannt: Für diesen Standort liegen keine Feuchtedaten vor, wasserbasierte Schwellenwerte greifen nicht; Empfehlung auf geringe Verlässlichkeit begrenzt.",
   "~{n} months (rainy season)": "~{n} Monate (Regenzeit)",
+  "N-fixer": "N-Fixierer",
+  "Biological nitrogen fixer: enriches degraded soils with atmospheric nitrogen": "Biologischer Stickstofffixierer: reichert degradierte Böden mit Luftstickstoff an",
 };
 const SW = {
   "Analyze": "Chambua",
@@ -3494,6 +3512,8 @@ const SW = {
   "Steep slope: direct seeding at risk of erosion — use contour pits or prefer seedlings": "Mteremko mkali: upandaji mbegu uko hatarini kwa mmomonyoko — tumia mashimo ya kontua au pendelea miche",
   "Aridity unknown: no moisture series is available for this site, so water-driven gates cannot fire; establishment advice is capped at low confidence.": "Ukame haujulikani: hakuna mfululizo wa unyevu unaopatikana kwa eneo hili, kwa hivyo vigezo vya maji haviwezi kufanya kazi; ushauri wa uanzishaji umepunguzwa kwa ujasiri wa chini.",
   "~{n} months (rainy season)": "~miezi {n} (msimu wa mvua)",
+  "N-fixer": "kifunga nitrojeni",
+  "Biological nitrogen fixer: enriches degraded soils with atmospheric nitrogen": "Kirekebishaji cha nitrojeni kibiolojia: hurutubisha udongo ulioharibika kwa nitrojeni ya anga",
 };
 
 const TR = {
@@ -3864,6 +3884,8 @@ const TR = {
   "Steep slope: direct seeding at risk of erosion — use contour pits or prefer seedlings": "Dik eğim: Doğrudan ekim erozyon riski taşır — teras/eşyükselti çukurları kullanın veya fidan tercih edin",
   "Aridity unknown: no moisture series is available for this site, so water-driven gates cannot fire; establishment advice is capped at low confidence.": "Kuraklık derecesi bilinmiyor: Bu konum için nem serisi mevcut olmadığından su kısıtları uygulanamıyor; yerleşim tavsiyesi düşük güvenilirlikle sınırlandırıldı.",
   "~{n} months (rainy season)": "~{n} ay (yağış mevsimi)",
+  "N-fixer": "azot bağlayıcı",
+  "Biological nitrogen fixer: enriches degraded soils with atmospheric nitrogen": "Biyolojik azot bağlayıcı: havadaki azotu bağlayarak bozulmuş toprakları zenginleştirir",
 };
 
 export const DICTS = { pt: PT, es: ES, fr: FR, zh: ZH, ja: JA, ru: RU, id: ID, hi: HI, de: DE, sw: SW, tr: TR };
