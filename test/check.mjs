@@ -1140,6 +1140,8 @@ assert.equal(recalcDiverg.length, 0, `old/new recalcitrant gates diverge for ${r
     "Delonix regia",
     "Parkinsonia aculeata",
     "Schizolobium parahybum",
+    "Parkia biglobosa", // conflicting nodulation reports: not tagged until resolved
+    "Adenanthera pavonina",
     "Quercus robur",
   ];
   for (const sci of negatives) {

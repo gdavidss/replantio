@@ -15,7 +15,7 @@ Myrica,Myricaceae,Actinorhizal,yes,Frankia,Pawlowski & Sirrenberg (2008) Actinor
 Purshia,Rosaceae,Actinorhizal,yes,Frankia,Pawlowski & Sirrenberg (2008) Actinorhizal Symbioses,Actinorhizal shrub
 Shepherdia,Elaeagnaceae,Actinorhizal,yes,Frankia,Pawlowski & Sirrenberg (2008) Actinorhizal Symbioses,Actinorhizal berry shrub
 Acacia,Leguminosae,Mimosoid,yes,Rhizobium,Sprent (2009) Legume Nodulation,Nodulating wattle / acacia tree
-Adenanthera,Leguminosae,Mimosoid,yes,Rhizobium,Sprent (2009) Legume Nodulation,Nodulating bead tree
+Adenanthera,Leguminosae,Mimosoid,uncertain,Unconfirmed,Allen & Allen (1981) list as non-nodulating; later surveys report nodules,Conflicting reports; not tagged until resolved
 Aeschynomene,Leguminosae,Papilionoideae,yes,Rhizobium,Sprent (2009) Legume Nodulation,Stem- and root-nodulating legume
 Afzelia,Leguminosae,Detarioideae,no,None,Sprent (2009) Legume Nodulation; Allen & Allen (1981),Non-nodulating timber tree
 Albizia,Leguminosae,Mimosoid,yes,Rhizobium,Sprent (2009) Legume Nodulation,Nodulating silk tree
@@ -111,7 +111,7 @@ Ononis,Leguminosae,Papilionoideae,yes,Rhizobium,Sprent (2009) Legume Nodulation,
 Ornithopus,Leguminosae,Papilionoideae,yes,Rhizobium,Sprent (2009) Legume Nodulation,Nodulating serradella
 Pachyrhizus,Leguminosae,Papilionoideae,yes,Rhizobium,Sprent (2009) Legume Nodulation,Nodulating jicama yam bean
 Paraserianthes,Leguminosae,Mimosoid,yes,Rhizobium,Sprent (2009) Legume Nodulation,Nodulating falcata pioneer tree
-Parkia,Leguminosae,Mimosoid,yes,Rhizobium,Sprent (2009) Legume Nodulation,Nodulating locust bean tree
+Parkia,Leguminosae,Mimosoid,uncertain,Unconfirmed,Allen & Allen (1981) list as non-nodulating; later surveys report nodules,Conflicting reports; not tagged until resolved
 Parkinsonia,Leguminosae,Caesalpinioideae,no,None,Sprent (2009) Legume Nodulation; USDA PLANTS,Non-nodulating palo verde
 Peltophorum,Leguminosae,Caesalpinioideae,no,None,Sprent (2009) Legume Nodulation,Non-nodulating yellow poinciana
 Pentaclethra,Leguminosae,Mimosoid,yes,Rhizobium,Sprent (2009) Legume Nodulation,Nodulating oil bean tree
