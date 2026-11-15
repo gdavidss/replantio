@@ -535,6 +535,60 @@ export function aggregateClimate(daily) {
   };
 }
 
+// Bias-corrected future climate via the Delta Change / Anomaly method
+// (Ramirez-Villegas & Jarvis 2010, CIAT; Hawkins et al. 2013; Maraun 2016):
+// additive monthly temperature & extreme-low deltas, multiplicative monthly
+// precipitation ratios (1 mm floor, [0.25, 3.0] clamp) applied to observed ERA5.
+// Falls back to raw gcmFuture if gcmBase is unavailable.
+export function applyClimateDelta(era5Site, gcmBase, gcmFuture) {
+  const valid = c => Array.isArray(c?.tavg) && c.tavg.length === 12
+    && Array.isArray(c?.tmin) && c.tmin.length === 12
+    && Array.isArray(c?.prec) && c.prec.length === 12;
+  if (!valid(gcmFuture)) throw new Error("incomplete future climate normals");
+  const context = {
+    ph: era5Site?.ph ?? null,
+    soil: era5Site?.soil ?? null,
+    lat: era5Site?.lat ?? null,
+    elevation: era5Site?.elevation ?? null,
+    irrigated: era5Site?.irrigated,
+    terrain: era5Site?.terrain ?? null,
+    radSlope: era5Site?.radSlope ?? null,
+    rad: era5Site?.rad ?? null,
+    rh: era5Site?.rh ?? null,
+    cloud: era5Site?.cloud ?? null,
+  };
+  if (!valid(era5Site) || !valid(gcmBase)) {
+    return { ...gcmFuture, ...context };
+  }
+  const tavg = Array(12), tmin = Array(12), prec = Array(12);
+  for (let m = 0; m < 12; m++) {
+    tavg[m] = era5Site.tavg[m] + (gcmFuture.tavg[m] - gcmBase.tavg[m]);
+    tmin[m] = era5Site.tmin[m] + (gcmFuture.tmin[m] - gcmBase.tmin[m]);
+    const ratio = Math.max(0.25, Math.min(3.0, Math.max(1, gcmFuture.prec[m]) / Math.max(1, gcmBase.prec[m])));
+    prec[m] = Math.max(0, era5Site.prec[m] * ratio);
+  }
+  const meanTemp = tavg.reduce((a, b) => a + b, 0) / 12;
+  const annualRain = prec.reduce((a, b) => a + b, 0);
+  const absMin = (era5Site.absMin != null && gcmBase.absMin != null && gcmFuture.absMin != null)
+    ? era5Site.absMin + (gcmFuture.absMin - gcmBase.absMin)
+    : (gcmFuture.absMin ?? era5Site.absMin ?? null);
+  return {
+    ...context,
+    tavg,
+    tmin,
+    prec,
+    meanTemp,
+    annualRain,
+    absMin,
+    koppen: koppenGeigerClass(tavg, prec),
+    et0: null,
+    annualET0: null,
+    waterBalance: null,
+    ai: null,
+    aridity: null,
+  };
+}
+
 function dayClasses(d) {
   // half-hour tolerance on the EcoCrop category boundaries so equatorial
   // ~12.1h days still count as "short day (<12h)"
