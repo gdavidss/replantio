@@ -667,7 +667,9 @@ export function scoreSpecies(sp, site, ev = null) {
 
   // An annual crop lives inside its growing cycle window and never meets the
   // winter: the annual-regime gate applies only to perennials that inhabit
-  // the ground year-round (same lifeform distinction as dual-stage frost).
+  // the ground year-round (same lifeform distinction as dual-stage frost;
+  // note that the 95 EcoCrop taxa tagged "annual, perennial" also carry
+  // sp.annual = true and share this exemption when G < 12).
   let annual = 1;
   if (!sp.annual || G === 12) {
     const annualMean = site.tavg.reduce((a, b) => a + b, 0) / 12;
@@ -1058,7 +1060,7 @@ export function windowLabel(win) {
 }
 
 // Directive strings also serving as i18n keys (every emitted directive must
-// exist in all i18n.js dictionaries; see scripts/update_i18n.py).
+// exist in all i18n.js dictionaries; verified by scripts/check_i18n.mjs).
 const ARIDITY_UNKNOWN_DIRECTIVE = "Aridity unknown: no moisture series is available for this site, so water-driven gates cannot fire; establishment advice is capped at low confidence.";
 const STEEP_SLOPE_DIRECTIVE = "Steep slope: direct seeding at risk of erosion — use contour pits or prefer seedlings";
 
@@ -1078,7 +1080,7 @@ const STEEP_SLOPE_DIRECTIVE = "Steep slope: direct seeding at risk of erosion �
  * - Aridity classes follow UNEP (1992/1997): hyper-arid AI < 0.05, arid < 0.20,
  *   semi-arid 0.20–0.50, dry sub-humid 0.50–0.65, humid > 0.65.
  * - Storage physiology continuum (Roberts 1973; Dickie & Pritchard 2002,
- *   doi:10.1017/S0960258502000272); dormancy classes (Baskin & Baskin
+ *   doi:10.1079/9780851995342.0239); dormancy classes (Baskin & Baskin
  *   2004/2014, doi:10.1016/C2013-0-00597-X); reserve effect (Westoby et al.
  *   1996; Moles & Westoby 2004, doi:10.1111/j.0022-0477.2004.00884.x).
  * - Phase-2 additions: p_ds uncertainty intervals, with half-widths loosely

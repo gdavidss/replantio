@@ -51,6 +51,8 @@ Documented adaptations for perennials (`scoring.js`):
 - **Annual regime gate**: a tree lives through the whole year, so the annual mean
   temperature must sit inside the species' absolute envelope. Without this, arid
   tropical species "qualify" on a four-month slice of a temperate summer.
+  Short-cycle annuals (`annual: true` with `G < 12`) are exempt from this 12-month
+  mean gate, including the 95 facultative EcoCrop taxa tagged `"annual, perennial"`.
 - **Dual-stage frost semantics**: decouples dormant winter hardiness from active
   growing-season shoot sensitivity:
   - *Dormant winter hardiness (KTMPR)*: tested against winter monthly minima
@@ -129,8 +131,9 @@ nursery-raised seedlings? The answer comes from `establishmentStrategy()` in
 `scoring.js`, a rule set kept deliberately separate from the suitability score
 above (a well-suited species can still be a poor direct-seeding candidate).
 
-- **Categories, not scores.** Outcomes are `direct seeding`, `seedling`, or
-  `both` (conditional), each with an explicit `high / medium / low` confidence.
+- **Categories, not scores.** Outcomes are `direct seeding`, `seedling`,
+  `both` (conditional), or `vegetative` (`Cuttings or vegetative propagation`),
+  each with an explicit `high / medium / low` confidence.
   There is intentionally no 0–1 feasibility number: mean field establishment
   from direct seeding is only ~11% (Ceccon et al. 2016), so any precision
   beyond category + confidence would be false precision. (Ceccon et al. 2016,
@@ -176,17 +179,16 @@ above (a well-suited species can still be a poor direct-seeding candidate).
   epicotyl-chilling and false-break rules are parked for
   a follow-up until their citations are verified.
 - **CSV codes are stable English; the UI localizes.** The export columns
-  `establishment_method` (`direct_seeding` / `seedling` / `both`),
+  `establishment_method` (`direct_seeding` / `seedling` / `both` / `vegetative`),
   `establishment_confidence` (`high` / `medium` / `low`) and `sowing_window`
   (English month abbreviations, e.g. `Oct–Dec`) carry the same values the
   cards show, untranslated for analysis. They describe the **current site
   only**, not the 2040s outlook (the strategy is never recomputed for the
-  projection; the CSV `#` meta line says so, format v2).
-- **Payload honesty.** `data/species.json` (~675KB of trait fields for ~2k
-  species) dominates first render; it loads async beside the optional layers
-  so map interaction never blocks on it (load timed via
-  `console.time("species.json")` in `app.js`). Backlog: per-language dynamic
-  import / trait-field splitting to cut the initial payload.
+  projection; the CSV `#` meta line says so, format v3).
+- **Payload honesty.** `data/species.json` (~1.5 MB uncompressed, ~143 KB gzipped
+  of trait fields for ~2k species) dominates first render; it loads async beside
+  the optional layers so map interaction never blocks on it. Backlog: per-language
+  dynamic import / trait-field splitting to cut the initial payload.
 
 Eight EcoCrop rows with corrupt envelopes (inverted ranges, e.g. Faidherbia albida
 with TMAX < TOPMX) are dropped at build time; they would be unscorable everywhere.
