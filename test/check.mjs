@@ -1,7 +1,7 @@
 // Self-check for the scoring and growth engines. Run: node test/check.mjs
 import assert from "node:assert";
 import { readFileSync } from "node:fs";
-import { trap, daylength, slopeSolarFactor, monthlySlopeSolarFactors, monthlyFlatInsolation, maxSoilDepthCm, scorePerennialRain, SLOPE_FLAT_DEG, SLOPE_MAX_DEG, MAX_SLOPE_DRAIN_FACTOR, scoreSpecies, tiebreakScore, aggregateClimate, applyClimateDelta, grade, aridityClass, koppenGeigerClass, KOPPEN_DESCRIPTIONS, usdaTextureClass, faoTextureCategory, saxtonRawlsHydrology, aggregateSoilProfile, normalizeSearch, establishmentStrategy, seedReserveAdvantage, sowingWindow, windowLabel, windowLabel, csvEscape } from "../scoring.js";
+import { trap, daylength, slopeSolarFactor, monthlySlopeSolarFactors, monthlyFlatInsolation, maxSoilDepthCm, scorePerennialRain, SLOPE_FLAT_DEG, SLOPE_MAX_DEG, MAX_SLOPE_DRAIN_FACTOR, scoreSpecies, tiebreakScore, aggregateClimate, applyClimateDelta, grade, aridityClass, koppenGeigerClass, KOPPEN_DESCRIPTIONS, usdaTextureClass, faoTextureCategory, saxtonRawlsHydrology, aggregateSoilProfile, normalizeSearch, establishmentStrategy, seedReserveAdvantage, sowingWindow, windowLabel, csvEscape } from "../scoring.js";
 import { CLASSES, height, dbhCm, co2eKgPerTree, crownDiameterM, crownDisplayM, standDisplay, maturityYears } from "../growth.js";
 
 const species = JSON.parse(readFileSync(new URL("../data/species.json", import.meta.url)));
