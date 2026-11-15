@@ -11477,8 +11477,7 @@
   "storage_confidence": "uncertain",
   "sw_1000g": 35.97,
   "sw_g": 0.03597,
-  "tsw_source": "species",
-  "viviparous": true
+  "tsw_source": "species"
  },
  "4198": {
   "dormancy": "ND",
